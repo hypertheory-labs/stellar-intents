@@ -59,9 +59,8 @@ check, a server event), and a late one must not undo what's known.
 
 ## How a hold moves through it
 
-The example outbox page ([`examples/angular-holds`](../../../../examples/angular-holds)), against the reference
-server. Rung three (server-sent events) shown; rungs one and two ask with
-`GET /holds/{id}` instead, and end the same way.
+Against the reference server, with `provideOutboxStream`. Rungs one and two (a status
+check) ask with `GET /holds/{id}` instead, and end the same way.
 
 ```mermaid
 sequenceDiagram
@@ -81,8 +80,7 @@ sequenceDiagram
     P->>A: GET /holds (reload its own data)
     Note over P: the server's row (requested)<br/>replaces the guess: same id
     Note over A: a few seconds later: decided
-    A-->>P: SSE hold-decided (placed)
-    P->>O: resolve(id, done)
+    A-->>O: SSE intent-decided (done)
     O-->>P: [Outbox] intentDone
     P->>A: GET /holds
     Note over P: the row is now placed
@@ -164,17 +162,32 @@ inject(Events)
 
 ### 5. Hearing about "done"
 
-A `received` intent waits for an outcome the outbox can't see. The app finds out
-however it can, and calls `resolve`:
+A `received` intent waits for an outcome. Three rungs, each on top of the last, all
+ending the same way:
 
-```ts
-outbox.resolve(id, { status: 'done' });
-outbox.resolve(id, { status: 'needs-attention', failure: { kind: 'rejected', detail: reason } });
-```
+1. **Ask** (PROTOCOL §2). Declare how on the intent type, then `outbox.checkStatus(id)`
+   (a "Check status" button) or `outbox.checkWaiting()` (everything `received` or
+   `unknown`):
 
-The reference app has three rungs, each added on top of the last: a "Check status" button, a
-check when the user comes back to the tab, and server-sent events. All three end in
-the same `resolve`.
+   ```ts
+   status: {
+     url: (intent) => `/api/holds/${intent.id}`,
+     outcome: (hold: Hold) =>
+       hold.status === 'placed' ? { status: 'done' }
+       : hold.status === 'rejected' ? { status: 'needs-attention', detail: hold.reason ?? undefined }
+       : undefined, // not decided yet
+   },
+   ```
+
+2. **Ask when the user comes back to the tab**: `provideOutboxStatusChecks()` in
+   app.config. This is the floor: it works with no stream at all.
+3. **Be told** (PROTOCOL §3): `provideOutboxStream({ eventsUrl, sessionUrl })` in
+   app.config. It settles intents on `intent-decided`, runs `checkWaiting()` on every
+   (re)connect, and announces `[Server] subscribed`, `invalidated { keys }`, and
+   `signedOut` for anyone holding reads. When the stream drops, it asks the session
+   before reconnecting (with backoff), and stops if you're signed out.
+
+An outcome learned any other way goes in with `resolve(id, outcome)`.
 
 ### 6. Show memory and guesses together, then promote
 
@@ -205,6 +218,9 @@ effect(() => {
 | --------------------------- | ------------------------------------------------------------------------------------------------ |
 | `enqueue(type, payload)`    | Creates the intent (new id), publishes `intentRequested`, sends it. Returns the intent.          |
 | `resolve(id, outcome)`      | Records an outcome learned some other way. Ignored for unknown ids and decided intents.          |
+| `settle(id, outcome)`       | The same, from an `Outcome` (`done`, or `needs-attention` with a `detail`), as the stream says it. |
+| `checkStatus(id)`           | Asks the type's `status.url`; settles if the answer is decided. A 404 is "not recorded yet".      |
+| `checkWaiting()`            | `checkStatus` for every `received` and `unknown` intent.                                         |
 | `retire(id)`                | Promotion: removes the intent, publishes `intentRetired`.                                        |
 | `dismiss(id)`               | The user let it go: removes the intent, publishes `intentDismissed`.                             |
 | `entities()`, `entityMap()` | Every intent still held (from `withEntities`).                                                   |
@@ -238,8 +254,14 @@ effect(() => {
 ### Types
 
 `Intent`, `IntentState`, `IntentStatus`, `Failure`, `Candidate`, `IntentType`,
-`IntentRequest`, `Apology`, `ApologyAction`, `Receipt`, `ApologyNotice`,
-`defineIntentType`, `provideIntentTypes`. See `src/lib/types.ts`.
+`IntentRequest`, `Apology`, `ApologyAction`, `Outcome`, `StatusCheck`, `Receipt`,
+`ApologyNotice`, `defineIntentType`, `provideIntentTypes`. See `src/lib/types.ts`.
+
+### The stream (`src/lib/stream.ts`)
+
+`provideOutboxStream(options)`, `provideOutboxStatusChecks()`, `serverEvents` (source
+`Server`: `subscribed`, `invalidated`, `signedOut`), and `EVENT_SOURCE` (the
+EventSource factory, to replace in tests).
 
 ## Rules the library keeps
 
@@ -264,7 +286,8 @@ Phase 1 is in memory and deliberately small. Not built:
 - **Ordering between intents.** Every intent is sent at once (`mergeMap`). Per-type
   `concatMap` is a proposal in the design.
 - **Stale intents** (`staleAfter`): re-confirming an intent that waited too long.
-- **Polling.** The outbox never asks about a `received` intent; the app does.
+- **Polling on a timer.** It asks when told to, when the tab becomes visible, and on
+  every stream (re)connect. It never asks on an interval.
 
 ## Tests
 

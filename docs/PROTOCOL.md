@@ -251,8 +251,7 @@ What a conforming client has, in any framework. Names are suggestions.
    timestamps, state). Exposes receipts, candidates, and apologies derived from them.
 2. **Intent types, registered in code.** For each kind of command: how to build the
    request from the intent, the receipt text, an optional candidate, an apology, a
-   timeout, and (**[Proposed]**: the Angular outbox doesn't have it yet) how to read an
-   outcome from a status-check response.
+   timeout, and how to read an outcome from a status-check response.
 3. **Sender.** Sends a command per §1 and maps the response to a state. Never cancels on
    timeout. Applies states with one rule: **once `done` or `needs-attention`, never
    change again** (answers arrive in any order).

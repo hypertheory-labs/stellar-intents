@@ -23,4 +23,4 @@ Three moves, and each has a document that owns the rule:
 ## `git.hypertheory-labs.dev/loom/cart/cart.md`
 
 - source: https://git.hypertheory-labs.dev/loom/cart/raw/branch/main/.loom/published/cart.md
-- what of ours depends on it: **nothing recorded** — no `.usages.md`
+- what of ours depends on it: `.loom/externals/git.hypertheory-labs.dev/loom/cart/cart.usages.md`

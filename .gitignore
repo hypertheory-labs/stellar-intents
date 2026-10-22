@@ -19,3 +19,6 @@ obj/
 .idea/
 .DS_Store
 Thumbs.db
+
+# loom: carts are local and never committed (cart agreement)
+.loom/cart/

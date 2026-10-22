@@ -34,6 +34,32 @@ wire only carries what the server knows. They're defined in the outbox
 
 ---
 
+## 0. Identity [Implemented]
+
+Who the user is never travels in a URL or a payload the client composes. The reference
+server does all of this, with a Development-only cookie sign-in standing in for a real
+identity provider.
+
+- **The browser sends the credentials on its own:** a session cookie, `HttpOnly`,
+  `SameSite=Strict`. (`EventSource` can't send an `Authorization` header anyway.) Who
+  issues the cookie (an edge that keeps the user's tokens server-side, usually) is outside
+  this protocol.
+- **Unauthenticated means `401`, never a redirect.** A `fetch` or an `EventSource` can't
+  follow a login page.
+- **There is a session resource** the client can ask "am I signed in?" (the reference uses
+  `GET /session`, always `200`, with the answer in the body). `EventSource` can't tell a
+  `401` from a server that went away, so when the stream drops, a client asks this
+  before reconnecting, and stops reconnecting if it's signed out.
+- **Unsafe requests without an `Idempotency-Key` are rejected** (`400`, problem+json).
+  §1 already requires the header. Enforcing it also makes it a CSRF defence: a custom
+  header can't cross origins without a preflight. With `SameSite=Strict`, that's all of
+  it, with no antiforgery token. (Reasoned, not yet reviewed by a security person.)
+- **[Proposed]** The server **MAY** close the stream at any time, including when the
+  user's access token expires. The reconnect goes back through whatever refreshes the
+  session, or comes back `401`.
+
+---
+
 ## 1. Commands [Implemented]
 
 ### Request
@@ -116,7 +142,7 @@ enhancement: a client that never opens it must still reach every outcome.
 
 ---
 
-## 3. The event stream [Implemented, with domain-specific names]
+## 3. The event stream [Implemented]
 
 One [Server-Sent Events](https://html.spec.whatwg.org/multipage/server-sent-events.html)
 stream per user, carrying outcomes and invalidations as they happen.
@@ -126,10 +152,7 @@ GET /events HTTP/1.1
 Accept: text/event-stream
 ```
 
-> **Today** the reference backend serves `GET /patrons/{patronId}/hold-events` with
-> `subscribed` and a hold-specific `hold-decided` event. The generic `/events`,
-> `intent-decided`, and `invalidate` below are **[Proposed]**: the same idea, named so
-> that one client listener can serve every intent type.
+The user is whoever the session says (§0). Without one, the stream is `401`.
 
 ### Events
 
@@ -149,7 +172,7 @@ the client **MUST**:
 
 That rule replaces replay. It is always correct and far simpler than `Last-Event-ID`.
 
-#### `intent-decided` [Proposed]
+#### `intent-decided`
 
 ```
 event: intent-decided
@@ -165,7 +188,7 @@ data: {"intentId":"0b6e0c3e-…","outcome":"needs-attention","detail":"You alrea
 The client resolves the intent. If the intent is unknown to it (another tab, already
 retired) or already decided, the client ignores the event.
 
-#### `invalidate` [Proposed]
+#### `invalidate`
 
 ```
 event: invalidate
@@ -179,6 +202,10 @@ stale and refetches the ones on screen.
   when it's equal to the read's path, or a prefix of it ending at a segment boundary:
   `/holds` matches `/holds`, `/holds?patronId=p1`, and `/holds/0b6e…`, but **not**
   `/holdsArchive`.
+- **A prefix can't select a query parameter.** `/holds?patronId=p1` matches only a read
+  asked with exactly that query (same parameters, same order). So the URL design decides
+  how precisely a server can invalidate: `/patrons/p1/holds` can be matched by prefix,
+  while `/holds?patronId=p1` can only be matched exactly.
 - The server **MAY** send invalidations caused by **other** users (a title's wait list
   changed because someone else placed a hold). This is how reads stay live without
   WebSockets.
@@ -194,11 +221,12 @@ stale and refetches the ones on screen.
 - **Fan out per connection.** Two tabs for the same user each get every event.
 - **Bounded.** A connection that stops reading **MAY** be closed rather than buffered
   forever. The client reconnects and the `subscribed` rule recovers what was missed.
-- **Heartbeats.** The server **SHOULD** send a comment line (`: keep-alive`) about every
-  15–30 s so proxies don't close an idle stream, and **SHOULD** disable response
-  buffering and compression for the route.
-- **Auth is a cookie.** `EventSource` can't send an `Authorization` header. The stream
-  identifies the user from the session (a BFF cookie), never from the URL.
+- **Heartbeats.** About every 15–30 s, the server **SHOULD** send a comment line
+  (`: keep-alive`) or an event named `heartbeat`, so proxies don't close an idle stream.
+  Clients ignore both. (.NET's `SseItem` can't write a comment, so the reference sends
+  the event.) It **SHOULD** also disable response buffering and compression for the
+  route, and anything proxying the stream must not buffer it.
+- **Auth is the session** (§0), never the URL.
 
 ---
 
@@ -251,7 +279,7 @@ does, it never has to roll anything back.
 3. Errors are problem+json with a user-safe `detail`.
 4. Every command's resource can be fetched for a status check (§2), with an `ETag`.
 5. One SSE stream per user (§3): `subscribed` first, events only after commit, fan-out
-   per connection, bounded, heartbeats, cookie auth.
+   per connection, bounded, heartbeats, session auth (§0).
 6. When a write changes what a read would return, send `invalidate` with keys that cover
    it, including to other affected users.
 
@@ -321,4 +349,7 @@ implementation can be checked without reading the reference code.
 - **Client (Angular, NgRx Signal Store):** [`client/angular/projects/outbox`](../client/angular/projects/outbox),
   with a page using it in [`examples/angular-holds`](../examples/angular-holds).
 - **Server (Wolverine + Fisher, the Marten API on SQLite, .NET 10):** [`server/dotnet/ReferenceApi/Holds`](../server/dotnet/ReferenceApi/Holds):
-  `HoldEndpoints.cs` (§1, §2) and `HoldEvents.cs` (§3, with `hold-decided`).
+  `HoldEndpoints.cs` (§1, §2) and `HoldKeys.cs` (which reads a change makes stale); the
+  stream itself, which knows nothing about holds, is in [`Streaming/`](../server/dotnet/ReferenceApi/Streaming)
+  (§3), and identity in [`Session/`](../server/dotnet/ReferenceApi/Session) (§0).
+  Conformance tests: [`ReferenceApi.Tests`](../server/dotnet/ReferenceApi.Tests).

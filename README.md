@@ -25,7 +25,7 @@ implementation of one side of it.
 | [`docs/`](docs)                                        | The wire protocol.                                                                                           | Draft 0.1                    |
 | [`client/angular/projects/outbox`](client/angular/projects/outbox) | The browser outbox: intents, receipts, candidates, apologies. NgRx Signal Store.               | Phase 1 (in memory), tested  |
 | [`client/angular/projects/url-state`](client/angular/projects/url-state) | The URL as a source of truth: `withRouter`, `withQueryParam`, `withMatrixParam` for Signal Store. | Experimental, tested         |
-| [`server/dotnet/ReferenceApi`](server/dotnet/ReferenceApi) | A reference server: library holds, on Wolverine + Fisher (event-sourced), .NET 10.                       | Builds; §1–3 with hold-specific event names |
+| [`server/dotnet/ReferenceApi`](server/dotnet/ReferenceApi) | A reference server: library holds, on Wolverine + Fisher (event-sourced), .NET 10.                       | §0–3, tested                |
 | [`examples/angular-holds`](examples/angular-holds)     | A real page using the outbox, from the course these ideas came out of.                                       | Reference code, not runnable here |
 
 ## Running things
@@ -37,7 +37,15 @@ dotnet run --project server/dotnet/ReferenceApi
 ```
 
 It keeps its data in a local SQLite file (`app.db`), created and seeded on first run. In
-Development, `POST /dev/reset` starts the data over.
+Development, `POST /dev/reset` starts the data over, and `POST /dev/sign-in?patronId=P0042`
+gives you a session (the event stream needs one):
+
+```bash
+curl -c jar -X POST "http://localhost:5261/dev/sign-in?patronId=P0042"
+curl -N -b jar http://localhost:5261/events
+```
+
+Tests: `dotnet test server/dotnet`.
 
 **Angular libraries:**
 
@@ -59,8 +67,8 @@ copy: what has to match is the wire.
 
 Rough order, smallest useful step first:
 
-1. **Generic stream events** on the server: `GET /events` with `intent-decided` and
-   `invalidate` (PROTOCOL §3), replacing the hold-specific stream. Heartbeats.
+1. ~~**Generic stream events** on the server~~: done. `GET /events` with `intent-decided`,
+   `invalidate`, and heartbeats, behind a cookie session (PROTOCOL §0, §3).
 2. **A read cache** (Angular): keyed by read key, memory only (never candidates),
    invalidated by the stream, stale-first with `fetchedAt`. A `cachedHttpResource` and a
    Signal Store `withQuery`.

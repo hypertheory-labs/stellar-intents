@@ -14,3 +14,8 @@ separate catalog service for titles).
 | `api.ts`                | The app's API types and URLs.                                                                 |
 
 The server side of the same flow is `server/dotnet/ReferenceApi/Holds/`.
+
+`hold-events.ts` listens to the old hold-specific stream (`/patrons/{patronId}/hold-events`,
+`hold-decided`). The reference server now serves the generic one (`GET /events`,
+`intent-decided`, `invalidate`; PROTOCOL §3), so read it for the reconnect logic, not the
+event names.

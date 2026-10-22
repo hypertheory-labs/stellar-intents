@@ -1,5 +1,6 @@
 using Fisher;
 using Microsoft.AspNetCore.Mvc;
+using ReferenceApi.Streaming;
 using JasperFx.Events.Documents;
 using Wolverine;
 using Wolverine.Http;
@@ -59,6 +60,9 @@ public static class HoldEndpoints
 
         var hold = Hold.Create(requested);
         hold.Version = 1;
+        // A requested hold already shows in its patron's list and its title's wait list.
+        // Enlisted like the decision message: sent only if this commits.
+        foreach (var invalidate in HoldKeys.Changed(hold)) await bus.PublishAsync(invalidate);
         response.Headers.ETag = ETagFor(hold);
         return Results.Accepted($"/holds/{id}", hold);
     }
@@ -84,7 +88,7 @@ public static class HoldEndpoints
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
-    public static async Task<IResult> Cancel(Guid id, IDocumentSession session)
+    public static async Task<IResult> Cancel(Guid id, IDocumentSession session, IMessageBus bus)
     {
         var hold = await session.Events.FetchLatest<Hold>(id);
         if (hold is null) return Results.NotFound();
@@ -96,6 +100,7 @@ public static class HoldEndpoints
 
         // If the decision hasn't run yet, it will find the hold cancelled and leave it alone.
         session.Events.Append(id, new HoldCancelled(id, DateTimeOffset.UtcNow));
+        foreach (var invalidate in HoldKeys.Changed(hold)) await bus.PublishAsync(invalidate);
         return Results.NoContent();
     }
 
@@ -120,25 +125,33 @@ public static class EvaluateHoldHandler
     /// <summary>The library's rule, deliberately simple: at most this many active holds per patron.</summary>
     public const int HoldLimit = 3;
 
-    // Returns HoldDecided as a cascading message: Wolverine sends it only after this handler's
-    // transaction (the decision event) commits. See HoldEvents.cs for where it goes.
-    public static async Task<HoldDecided?> Handle(EvaluateHold command, IDocumentSession session)
+    // Returns protocol messages (the decision, and which reads changed) as cascading
+    // messages: Wolverine sends them only after this handler's transaction (the decision
+    // event) commits. See Streaming/ProtocolMessages.cs for where they go.
+    public static async Task<OutgoingMessages> Handle(EvaluateHold command, IDocumentSession session)
     {
+        var messages = new OutgoingMessages();
         var hold = await session.Events.FetchLatest<Hold>(command.HoldId);
-        if (hold is null || hold.Status != HoldStatus.Requested) return null; // already decided (redelivery)
+        if (hold is null || hold.Status != HoldStatus.Requested) return messages; // already decided (redelivery), or cancelled
 
         var activeOthers = await session.Query<Hold>()
             .Where(h => h.PatronId == hold.PatronId && h.Id != hold.Id && h.Status == HoldStatus.Placed)
             .CountAsync();
 
-        object decision = activeOthers >= HoldLimit
-            ? new HoldRejected(hold.Id, $"You already have {HoldLimit} holds, the limit.", DateTimeOffset.UtcNow)
-            : new HoldPlaced(hold.Id, DateTimeOffset.UtcNow);
+        if (activeOthers >= HoldLimit)
+        {
+            var reason = $"You already have {HoldLimit} holds, the limit.";
+            session.Events.Append(hold.Id, new HoldRejected(hold.Id, reason, DateTimeOffset.UtcNow));
+            // The hold's id is the intent's id: the client generated it (PROTOCOL §1).
+            messages.Add(new IntentDecided(hold.PatronId, hold.Id, IntentOutcome.NeedsAttention, reason));
+        }
+        else
+        {
+            session.Events.Append(hold.Id, new HoldPlaced(hold.Id, DateTimeOffset.UtcNow));
+            messages.Add(new IntentDecided(hold.PatronId, hold.Id, IntentOutcome.Done));
+        }
 
-        session.Events.Append(hold.Id, decision);
-
-        return decision is HoldRejected rejected
-            ? new HoldDecided(hold.Id, hold.PatronId, hold.TitleId, HoldStatus.Rejected, rejected.Reason)
-            : new HoldDecided(hold.Id, hold.PatronId, hold.TitleId, HoldStatus.Placed, null);
+        messages.AddRange(HoldKeys.Changed(hold));
+        return messages;
     }
 }

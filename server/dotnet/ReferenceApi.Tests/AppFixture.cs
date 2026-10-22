@@ -24,6 +24,7 @@ public sealed class AppFixture : IAsyncLifetime
             // Decisions never happen on their own in tests: a test decides a hold when it
             // wants to (see Decide), so nothing races the assertions.
             builder.UseSetting("Holds:DecisionDelaySeconds", "3600");
+            builder.UseSetting("Events:HeartbeatSeconds", "1");
             builder.ConfigureServices(services => services.RunWolverineInSoloMode());
         });
     }

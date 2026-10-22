@@ -3,6 +3,7 @@ using System.Text.Json.Serialization;
 using ReferenceApi.Dev;
 using ReferenceApi.Holds;
 using ReferenceApi.Session;
+using ReferenceApi.Streaming;
 using Fisher;
 using JasperFx.Events.Daemon;
 using JasperFx.Events.Projections;
@@ -40,8 +41,8 @@ builder.Services.AddCookieSession();
 builder.Services.ConfigureHttpJsonOptions(json =>
     json.SerializerOptions.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase)));
 
-// fans committed hold decisions out to open SSE connections (see Holds/HoldEvents.cs)
-builder.Services.AddSingleton<HoldEventHub>();
+// fans committed protocol messages out to open SSE connections (see Streaming/)
+builder.Services.AddSingleton<EventStreamHub>();
 
 // The API's documentation: /openapi/v1.json
 builder.Services.AddOpenApi(options => options.AddDocumentTransformer((document, _, _) =>

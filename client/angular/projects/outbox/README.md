@@ -210,6 +210,42 @@ effect(() => {
 });
 ```
 
+### 7. Cached reads, and saying what's stale
+
+```ts
+// app.config
+provideHttpClient(withFetch()),
+provideReads({ apiRoot: '/api' }),
+
+// a component
+protected readonly myHolds = cachedHttpResource<Hold[]>(() => `/holds?patronId=${this.patronId()}`);
+```
+
+A real Angular `Resource` (`value`, `status`, `isLoading`, `hasValue`), plus `fetchedAt`,
+`stale`, `refreshError`, and `reload()`. Every reader of a key shares one entry and one
+request.
+
+- **Memory only.** It holds what the server answered, never candidates. Merge those in
+  for display (step 6).
+- **Fresh only while live.** A value fetched while the event stream is connected stays
+  fresh until an invalidation covers it. Without a stream (or after it drops), values
+  are stale-first: shown with their `fetchedAt`, and refetched when someone reads them.
+- **Invalidated from either side.** The server's `invalidate`, or an intent type's own
+  declaration, announced when the server has recorded the intent (received, done, or
+  needs-attention after being received), for this tab, at once:
+
+  ```ts
+  invalidates: ({ id, payload }) => [`/holds/${id}`, `/holds?patronId=${payload.patronId}`],
+  ```
+
+  Both arrive as `invalidationEvents.invalidated { keys, from }`, matched with PROTOCOL
+  §3's rule (`covers`).
+
+- **A failed refetch keeps the value** (it's still the last thing the server said) and
+  sets `refreshError`. Only a first load that fails is `error`.
+- Refetches send `cache: 'no-cache'`, so they reach the server (a cheap 304 with an ETag)
+  rather than the browser's HTTP cache. That needs `withFetch()`.
+
 ## Reference
 
 ### `OutboxStore` (root signal store)
@@ -260,8 +296,15 @@ effect(() => {
 ### The stream (`src/lib/stream.ts`)
 
 `provideOutboxStream(options)`, `provideOutboxStatusChecks()`, `serverEvents` (source
-`Server`: `subscribed`, `invalidated`, `signedOut`), and `EVENT_SOURCE` (the
-EventSource factory, to replace in tests).
+`Server`: `subscribed`, `disconnected`, `signedOut`), `invalidationEvents` (source
+`Reads`: `invalidated { keys, from }`), and `EVENT_SOURCE` (the EventSource factory, to
+replace in tests).
+
+### Reads (`src/lib/reads.ts`, `src/lib/read-cache.ts`)
+
+`provideReads({ apiRoot })`, `cachedHttpResource(key)`, `Reads` (the app's cache), and
+`ReadCache`, the same cache with no framework (`watch`, `refresh`, `invalidate`,
+`setLive`). `covers(key, readKey)` is the matching rule.
 
 ## Rules the library keeps
 

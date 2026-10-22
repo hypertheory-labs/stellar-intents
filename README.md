@@ -20,13 +20,13 @@ implementation of one side of it.
 
 ## What's here
 
-| Path                                                   | What                                                                                                         | Status                       |
-| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------ | ---------------------------- |
-| [`docs/`](docs)                                        | The wire protocol.                                                                                           | Draft 0.1                    |
-| [`client/angular/projects/outbox`](client/angular/projects/outbox) | The browser outbox: intents, receipts, candidates, apologies. NgRx Signal Store.               | Phase 1 (in memory), tested  |
-| [`client/angular/projects/url-state`](client/angular/projects/url-state) | The URL as a source of truth: `withRouter`, `withQueryParam`, `withMatrixParam` for Signal Store. | Experimental, tested         |
-| [`server/dotnet/ReferenceApi`](server/dotnet/ReferenceApi) | A reference server: library holds, on Wolverine + Fisher (event-sourced), .NET 10.                       | §0–3, tested                |
-| [`examples/angular-holds`](examples/angular-holds)     | A real page using the outbox, from the course these ideas came out of.                                       | Reference code, not runnable here |
+| Path                                                                     | What                                                                                              | Status                            |
+| ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------- | --------------------------------- |
+| [`docs/`](docs)                                                          | The wire protocol.                                                                                | Draft 0.1                         |
+| [`client/angular/projects/outbox`](client/angular/projects/outbox)       | The browser client: intents, receipts, candidates, apologies; the event stream; a read cache.     | In memory, tested                 |
+| [`client/angular/projects/url-state`](client/angular/projects/url-state) | The URL as a source of truth: `withRouter`, `withQueryParam`, `withMatrixParam` for Signal Store. | Experimental, tested              |
+| [`server/dotnet/ReferenceApi`](server/dotnet/ReferenceApi)               | A reference server: library holds, on Wolverine + Fisher (event-sourced), .NET 10.                | §0–3, tested                      |
+| [`examples/angular-holds`](examples/angular-holds)                       | A real page using the outbox, from the course these ideas came out of.                            | Reference code, not runnable here |
 
 ## Running things
 
@@ -69,9 +69,10 @@ Rough order, smallest useful step first:
 
 1. ~~**Generic stream events** on the server~~: done. `GET /events` with `intent-decided`,
    `invalidate`, and heartbeats, behind a cookie session (PROTOCOL §0, §3).
-2. **A read cache** (Angular): keyed by read key, memory only (never candidates),
-   invalidated by the stream, stale-first with `fetchedAt`. A `cachedHttpResource` and a
-   Signal Store `withQuery`.
+2. ~~**A read cache** (Angular)~~: done, as `cachedHttpResource` in the outbox library.
+   Keyed by read key, memory only, invalidated by the stream or by an intent type's
+   declaration, stale-first with `fetchedAt`, and fresh only while the stream is live.
+   (A Signal Store `withQuery` isn't built.)
 3. **Promotion without an effect**: intent types say where their real item shows up, and
    the cache retires done intents when it does.
 4. **Durability**: intents (and maybe reads) in IndexedDB, resent with the same id after a

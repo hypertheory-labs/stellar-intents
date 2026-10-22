@@ -25,8 +25,13 @@ namespace ReferenceApi.Streaming;
 ///   message: a backplane (a Wolverine transport every instance listens to). The hub's shape
 ///   survives; its handlers would just be fed from that.
 /// - No replay, deliberately (PROTOCOL §3, stream rules).
+///
+/// WHY end every stream when the app starts stopping: an open stream is a request in
+/// flight, so graceful shutdown waits for it (30 s by default) while heartbeats carry on.
+/// During a rolling deploy, clients would sit on a dying instance for that long. Ending
+/// the streams lets them reconnect at once, to an instance that's staying.
 /// </remarks>
-public sealed class EventStreamHub(IConfiguration config)
+public sealed class EventStreamHub(IConfiguration config, IHostApplicationLifetime lifetime)
 {
     // patronId -> (connectionId -> that connection's channel)
     private readonly ConcurrentDictionary<string, ConcurrentDictionary<Guid, Channel<SseItem<object>>>> _byPatron = new();
@@ -52,6 +57,9 @@ public sealed class EventStreamHub(IConfiguration config)
         var connections = _byPatron.GetOrAdd(patronId, _ => new());
         connections[connectionId] = channel;
         using var heartbeats = StartHeartbeats(channel, cancellation);
+        // The app is stopping: end this stream normally (see remarks). Completing the
+        // channel ends the read loop below without an exception.
+        using var stopping = lifetime.ApplicationStopping.Register(() => channel.Writer.TryComplete());
 
         try
         {

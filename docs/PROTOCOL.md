@@ -226,11 +226,16 @@ stale and refetches the ones on screen.
   Clients ignore both. (.NET's `SseItem` can't write a comment, so the reference sends
   the event.) It **SHOULD** also disable response buffering and compression for the
   route, and anything proxying the stream must not buffer it.
+- **End streams when shutting down.** A server **SHOULD** end every open stream as soon
+  as it starts stopping, so clients reconnect at once (to another instance, in a rolling
+  deploy). An open stream is a request in flight: left alone, graceful shutdown waits on
+  it. (Found in the reference: ASP.NET waited its full 30 s, sending heartbeats all the
+  while.)
 - **Silence means dropped.** A client **SHOULD** treat a stream that has been silent (no
   event, not even a heartbeat) for about twice the heartbeat interval as dropped: close
   it and reconnect. A proxy can hold a dead stream open, and `EventSource` can't tell.
-  (Found in the reference: the Angular dev server's proxy kept the browser's stream open
-  after the API was stopped.)
+  (Found in the reference: when the API crashed, the Angular dev server's proxy kept the
+  browser's stream open indefinitely. A clean end of the stream did get through.)
 - **Auth is the session** (§0), never the URL.
 
 ---

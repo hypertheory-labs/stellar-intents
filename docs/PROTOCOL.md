@@ -226,6 +226,11 @@ stale and refetches the ones on screen.
   Clients ignore both. (.NET's `SseItem` can't write a comment, so the reference sends
   the event.) It **SHOULD** also disable response buffering and compression for the
   route, and anything proxying the stream must not buffer it.
+- **Silence means dropped.** A client **SHOULD** treat a stream that has been silent (no
+  event, not even a heartbeat) for about twice the heartbeat interval as dropped: close
+  it and reconnect. A proxy can hold a dead stream open, and `EventSource` can't tell.
+  (Found in the reference: the Angular dev server's proxy kept the browser's stream open
+  after the API was stopped.)
 - **Auth is the session** (§0), never the URL.
 
 ---
@@ -322,13 +327,15 @@ implementation can be checked without reading the reference code.
     status check.
 14. `invalidate {keys:["/holds"]}` → reads `/holds?patronId=p1` and `/holds/abc` go stale;
     `/holdsArchive` does not.
+15. The stream stays open but sends nothing, not even a heartbeat, for twice the
+    heartbeat interval → the client treats it as dropped and reconnects (scenario 12).
 
 **Display**
 
-15. A candidate shows, marked as a guess, until memory contains its id; then only the real
+16. A candidate shows, marked as a guess, until memory contains its id; then only the real
     item shows (never both, never neither).
-16. A `needs-attention` or `failed-to-send` intent shows no candidate, and shows its apology.
-17. A `done` intent whose id is in memory is retired.
+17. A `needs-attention` or `failed-to-send` intent shows no candidate, and shows its apology.
+18. A `done` intent whose id is in memory is retired.
 
 ---
 

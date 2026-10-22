@@ -181,7 +181,8 @@ describe('the event stream (PROTOCOL §3)', () => {
     vi.advanceTimersByTime(60_000);
 
     expect(ctx.sources.length).toBe(1);
-    expect(ctx.seen.map((e) => e.type)).toEqual(['[Server] disconnected', '[Server] signedOut']);
+    // it never said "subscribed", so there was no connection to lose
+    expect(ctx.seen.map((e) => e.type)).toEqual(['[Server] signedOut']);
   });
 
   it('dropped and the session can’t be reached either: it keeps trying', () => {
@@ -193,6 +194,40 @@ describe('the event stream (PROTOCOL §3)', () => {
     vi.advanceTimersByTime(1_000);
 
     expect(ctx.sources.length).toBe(2);
+  });
+});
+
+describe('silence (a proxy can hold a dead stream open)', () => {
+  afterEach(() => vi.useRealTimers());
+
+  it('no event, not even a heartbeat, for a minute: treated as dropped, and announced', () => {
+    vi.useFakeTimers();
+    const ctx = setup();
+    ctx.latest().emit('subscribed');
+
+    vi.advanceTimersByTime(30_000);
+    ctx.latest().emit('heartbeat'); // still alive
+    vi.advanceTimersByTime(45_000);
+    ctx.http.expectNone('/session');
+
+    vi.advanceTimersByTime(20_000); // 65 s since the last heartbeat
+    expect(ctx.sources[0].readyState).toBe(2); // closed by us
+    expect(ctx.seen.map((e) => e.type)).toContain('[Server] disconnected');
+    ctx.http.expectOne('/session').flush({ isAuthenticated: true });
+
+    vi.advanceTimersByTime(1_000);
+    expect(ctx.sources.length).toBe(2); // reconnecting
+  });
+
+  it('a stream that drops once is handled once (silence, then the late error)', () => {
+    vi.useFakeTimers();
+    const ctx = setup();
+    ctx.latest().emit('subscribed');
+    vi.advanceTimersByTime(65_000);
+    ctx.http.expectOne('/session');
+
+    ctx.sources[0].giveUp(); // the browser finally notices too
+    ctx.http.expectNone('/session');
   });
 });
 

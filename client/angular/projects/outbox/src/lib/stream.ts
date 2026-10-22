@@ -44,6 +44,11 @@ export interface OutboxStreamOptions {
   readonly sessionUrl: string;
   /** Only for a cross-origin API. Same-origin (an edge, a dev proxy) sends the cookie anyway. */
   readonly withCredentials?: boolean;
+  /**
+   * How long the stream may be silent (not even a heartbeat) before it's treated as
+   * dropped. About twice the server's heartbeat interval. Default 60 s.
+   */
+  readonly silenceMs?: number;
 }
 
 /** The parts of EventSource the stream uses, so a test can supply a fake. */
@@ -64,6 +69,7 @@ export const EVENT_SOURCE = new InjectionToken<
 const CLOSED = 2;
 /** Backoff between reconnects: 1 s, 2 s, 4 s, … up to this. */
 const MAX_RECONNECT_MS = 30_000;
+const DEFAULT_SILENCE_MS = 60_000;
 
 /**
  * Opens the event stream for the app's lifetime (PROTOCOL §3), and:
@@ -71,7 +77,9 @@ const MAX_RECONNECT_MS = 30_000;
  * - on `intent-decided`, settles the intent;
  * - on `invalidate`, announces the keys (`invalidationEvents`, from the server);
  * - when it drops, asks the session whether we're still signed in, then reconnects with
- *   backoff, or stops.
+ *   backoff, or stops;
+ * - when it goes silent (no event, not even a heartbeat, for `silenceMs`), treats it as
+ *   dropped. A proxy can hold a dead stream open, and EventSource can't tell.
  */
 export function provideOutboxStream(options: OutboxStreamOptions): EnvironmentProviders {
   return makeEnvironmentProviders([provideEnvironmentInitializer(() => follow(options))]);
@@ -97,7 +105,12 @@ export function provideOutboxStatusChecks(): EnvironmentProviders {
   ]);
 }
 
-function follow({ eventsUrl, sessionUrl, withCredentials = false }: OutboxStreamOptions) {
+function follow({
+  eventsUrl,
+  sessionUrl,
+  withCredentials = false,
+  silenceMs = DEFAULT_SILENCE_MS,
+}: OutboxStreamOptions) {
   const outbox = inject(OutboxStore);
   const http = inject(HttpClient);
   const create = inject(EVENT_SOURCE);
@@ -108,14 +121,23 @@ function follow({ eventsUrl, sessionUrl, withCredentials = false }: OutboxStream
   let attempt = 0;
   let reconnect: ReturnType<typeof setTimeout> | undefined;
   let stopped = false;
+  /** Whether this connection said `subscribed`: only then is there anything to lose. */
+  let connected = false;
+  let lastHeard = Date.now();
 
   function open() {
     if (stopped) return;
     const opened = create(eventsUrl, { withCredentials });
     source = opened;
+    lastHeard = Date.now();
 
+    // Anything at all, heartbeats included, means the stream is alive.
+    for (const type of ['subscribed', 'heartbeat', 'intent-decided', 'invalidate']) {
+      opened.addEventListener(type, () => (lastHeard = Date.now()));
+    }
     opened.addEventListener('subscribed', () => {
       attempt = 0;
+      connected = true;
       outbox.checkWaiting();
       dispatch.subscribed();
     });
@@ -144,8 +166,10 @@ function follow({ eventsUrl, sessionUrl, withCredentials = false }: OutboxStream
   // and the server going away look the same, and reconnecting to a 401 forever is a loop.
   function dropped(closed: EventSourceLike) {
     closed.close();
-    if (stopped) return;
-    dispatch.disconnected();
+    if (closed !== source || stopped) return; // already handled (silence, then an error)
+    source = undefined;
+    if (connected) dispatch.disconnected();
+    connected = false;
     http.get<{ isAuthenticated: boolean }>(sessionUrl).subscribe({
       next: (session) => {
         if (session.isAuthenticated) return later();
@@ -161,9 +185,20 @@ function follow({ eventsUrl, sessionUrl, withCredentials = false }: OutboxStream
     reconnect = setTimeout(open, delay);
   }
 
+  // WHY a watchdog: through a proxy (a dev server, a load balancer, an edge), the
+  // browser's connection is to the proxy. If the server behind it dies, the proxy may keep
+  // that connection open and quiet forever. Only the missing heartbeats give it away.
+  const watchdog = setInterval(
+    () => {
+      if (source && Date.now() - lastHeard > silenceMs) dropped(source);
+    },
+    Math.min(silenceMs, 5_000),
+  );
+
   inject(DestroyRef).onDestroy(() => {
     stopped = true;
     clearTimeout(reconnect);
+    clearInterval(watchdog);
     source?.close();
   });
 

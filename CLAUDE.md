@@ -35,3 +35,4 @@ NuGet/npm packages or PRs to Wolverine/Marten. Don't design toward that yet.
   and put the open questions in my daily, each with a fallback. Jeff annotates; I dissolve.
 - Record declines (what was considered and not done, and why). Code only shows what was
   chosen.
+- Jeff likes mermaid sequence diagrams for protocol flows. Offer them.

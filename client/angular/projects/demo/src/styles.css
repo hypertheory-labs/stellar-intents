@@ -1,0 +1,35 @@
+:root {
+  color-scheme: light dark;
+  --text: #1b1b1f;
+  --bg: #ffffff;
+  --muted: #5a5a66;
+  --rule: #d9d9e0;
+  --warn: #9a3412;
+  font-family: system-ui, sans-serif;
+  line-height: 1.45;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --text: #ececf1;
+    --bg: #16161a;
+    --muted: #a3a3b2;
+    --rule: #33333d;
+    --warn: #fdba74;
+  }
+}
+
+body {
+  margin: 0;
+  color: var(--text);
+  background: var(--bg);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

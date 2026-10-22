@@ -1,0 +1,51 @@
+{
+  "$schema": "./node_modules/@angular/cli/lib/config/schema.json",
+  "version": 1,
+  "cli": {
+    "packageManager": "npm",
+    "analytics": false
+  },
+  "newProjectRoot": "projects",
+  "projects": {
+    "outbox": {
+      "projectType": "library",
+      "root": "projects/outbox",
+      "sourceRoot": "projects/outbox/src",
+      "prefix": "outbox",
+      "architect": {
+        "build": {
+          "builder": "@angular/build:ng-packagr",
+          "configurations": {
+            "production": { "tsConfig": "projects/outbox/tsconfig.lib.prod.json" },
+            "development": { "tsConfig": "projects/outbox/tsconfig.lib.json" }
+          },
+          "defaultConfiguration": "production"
+        },
+        "test": {
+          "builder": "@angular/build:unit-test",
+          "options": { "tsConfig": "projects/outbox/tsconfig.spec.json" }
+        }
+      }
+    },
+    "url-state": {
+      "projectType": "library",
+      "root": "projects/url-state",
+      "sourceRoot": "projects/url-state/src",
+      "prefix": "url",
+      "architect": {
+        "build": {
+          "builder": "@angular/build:ng-packagr",
+          "configurations": {
+            "production": { "tsConfig": "projects/url-state/tsconfig.lib.prod.json" },
+            "development": { "tsConfig": "projects/url-state/tsconfig.lib.json" }
+          },
+          "defaultConfiguration": "production"
+        },
+        "test": {
+          "builder": "@angular/build:unit-test",
+          "options": { "tsConfig": "projects/url-state/tsconfig.spec.json" }
+        }
+      }
+    }
+  }
+}

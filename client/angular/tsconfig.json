@@ -1,0 +1,35 @@
+/* To learn more about Typescript configuration file: https://www.typescriptlang.org/docs/handbook/tsconfig-json.html. */
+/* To learn more about Angular compiler options: https://angular.dev/reference/configs/angular-compiler-options. */
+{
+  "compileOnSave": false,
+  "compilerOptions": {
+    "strict": true,
+    "noImplicitOverride": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "noImplicitReturns": true,
+    "paths": {
+      "outbox": ["./projects/outbox/src/public-api.ts"],
+      "url-state": ["./projects/url-state/src/public-api.ts"]
+    },
+    "noFallthroughCasesInSwitch": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "experimentalDecorators": true,
+    "importHelpers": true,
+    "target": "ES2022",
+    "module": "preserve"
+  },
+  "angularCompilerOptions": {
+    "strictTemplates": true,
+    "enableI18nLegacyMessageIdFormat": false,
+    "strictInjectionParameters": true,
+    "strictInputAccessModifiers": true
+  },
+  "files": [],
+  "references": [
+    { "path": "./projects/outbox/tsconfig.lib.json" },
+    { "path": "./projects/outbox/tsconfig.spec.json" },
+    { "path": "./projects/url-state/tsconfig.lib.json" },
+    { "path": "./projects/url-state/tsconfig.spec.json" }
+  ]
+}

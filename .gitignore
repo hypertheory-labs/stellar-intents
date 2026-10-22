@@ -1,0 +1,21 @@
+# node / angular
+node_modules/
+dist/
+out-tsc/
+.angular/
+
+# .NET
+bin/
+obj/
+*.user
+.vs/
+
+# local data (the reference server's SQLite file)
+*.db
+*.db-shm
+*.db-wal
+
+# editors / os
+.idea/
+.DS_Store
+Thumbs.db

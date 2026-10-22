@@ -2,7 +2,7 @@
 
 **Draft 0.1, 2026-10-22.** How a browser and an API agree about commands the user asked
 for, and about reads that have gone stale. Framework-neutral: this page is the contract;
-the Angular `outbox` library and the Wolverine/Marten backend in this repo are one
+the Angular `outbox` library and the Wolverine/Fisher backend in this repo are one
 implementation of each side.
 
 If you're building a client for this protocol (in any framework), read
@@ -223,7 +223,8 @@ What a conforming client has, in any framework. Names are suggestions.
    timestamps, state). Exposes receipts, candidates, and apologies derived from them.
 2. **Intent types, registered in code.** For each kind of command: how to build the
    request from the intent, the receipt text, an optional candidate, an apology, a
-   timeout, and how to read an outcome from a status-check response.
+   timeout, and (**[Proposed]**: the Angular outbox doesn't have it yet) how to read an
+   outcome from a status-check response.
 3. **Sender.** Sends a command per §1 and maps the response to a state. Never cancels on
    timeout. Applies states with one rule: **once `done` or `needs-attention`, never
    change again** (answers arrive in any order).
@@ -319,5 +320,5 @@ implementation can be checked without reading the reference code.
 
 - **Client (Angular, NgRx Signal Store):** [`client/angular/projects/outbox`](../client/angular/projects/outbox),
   with a page using it in [`examples/angular-holds`](../examples/angular-holds).
-- **Server (Wolverine + Marten, .NET 10):** [`server/dotnet/ReferenceApi/Holds`](../server/dotnet/ReferenceApi/Holds):
+- **Server (Wolverine + Fisher, the Marten API on SQLite, .NET 10):** [`server/dotnet/ReferenceApi/Holds`](../server/dotnet/ReferenceApi/Holds):
   `HoldEndpoints.cs` (§1, §2) and `HoldEvents.cs` (§3, with `hold-decided`).

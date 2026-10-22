@@ -93,6 +93,22 @@ export interface IntentRequest {
   readonly body?: unknown;
 }
 
+/** What finally happened, as a status check or the server's event stream reports it. */
+export type Outcome =
+  { readonly status: 'done' } | { readonly status: 'needs-attention'; readonly detail?: string };
+
+/**
+ * How to ask the server what became of an intent (PROTOCOL §2). Declared per type,
+ * because whether a representation means "done" is the resource's business: a hold's
+ * `status` is `placed` or `rejected`.
+ */
+export interface StatusCheck<TPayload, TStatus> {
+  /** Where to ask. For a create, the resource's own URL (its id is the intent's id). */
+  url(intent: Intent<TPayload>): string;
+  /** What the answer means. `undefined`: not decided yet, and the receipt is still true. */
+  outcome(body: TStatus, intent: Intent<TPayload>): Outcome | undefined;
+}
+
 /** What the user can do about an apology. Dismissing is always available. */
 export type ApologyAction = 'retry' | 'edit' | 'discard' | 'contact';
 
@@ -104,7 +120,7 @@ export interface Apology<TPayload> {
 }
 
 /** Everything the outbox knows about one kind of intent. Registered, never stored. */
-export interface IntentType<TPayload, TCandidate = never> {
+export interface IntentType<TPayload, TCandidate = never, TStatus = unknown> {
   /** Stored on each intent; must stay stable across deploys. */
   readonly name: string;
   /** The request to send. Called each time the intent is sent. */
@@ -116,11 +132,13 @@ export interface IntentType<TPayload, TCandidate = never> {
   readonly apology: Apology<TPayload>;
   /** How long to wait for an answer before the intent is `unknown`. */
   readonly timeoutMs?: number;
+  /** Optional: how to ask what became of it. Without one, only the server's events can tell. */
+  readonly status?: StatusCheck<TPayload, TStatus>;
 }
 
 /** Identity function that exists so TypeScript can infer TPayload and TCandidate. */
-export function defineIntentType<TPayload, TCandidate = never>(
-  type: IntentType<TPayload, TCandidate>,
-): IntentType<TPayload, TCandidate> {
+export function defineIntentType<TPayload, TCandidate = never, TStatus = unknown>(
+  type: IntentType<TPayload, TCandidate, TStatus>,
+): IntentType<TPayload, TCandidate, TStatus> {
   return type;
 }

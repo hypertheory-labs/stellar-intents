@@ -13,6 +13,7 @@ import {
   IntentState,
   IntentStatus,
   IntentType,
+  Outcome,
 } from './types';
 
 /** How long to wait for an answer before an intent is `unknown`, unless its type says. */
@@ -104,6 +105,35 @@ export const OutboxStore = signalStore(
       transitionEvents[state.status]({ intent: current(id) });
     }
 
+    function settle(id: string, outcome: Outcome) {
+      moveTo(
+        id,
+        outcome.status === 'done'
+          ? { status: 'done', doneAt: Date.now() }
+          : {
+              status: 'needs-attention',
+              failure: { kind: 'rejected', detail: outcome.detail },
+            },
+      );
+    }
+
+    /** PROTOCOL §2: ask what became of it, if its type says how. */
+    function checkStatus(id: string) {
+      const intent = current(id);
+      const check = intent && store._types.get(intent.type)?.status;
+      if (!check) return;
+      store._http.get(check.url(intent)).subscribe({
+        next: (body) => {
+          const outcome = check.outcome(body, intent);
+          if (outcome) settle(id, outcome);
+          // undefined: not decided yet; the receipt is still true
+        },
+        // A 404 means "not recorded yet", not an outcome: it may still be in flight. Any
+        // other failure is just a check that didn't work. Either way, ask again later.
+        error: () => undefined,
+      });
+    }
+
     function send(intent: Intent, type: AnyIntentType) {
       const { method, url, body } = type.request(intent);
       moveTo(intent.id, { status: 'sent', sentAt: Date.now() });
@@ -181,14 +211,32 @@ export const OutboxStore = signalStore(
       },
 
       /**
-       * For a `received` intent whose outcome the app learned some other way
-       * (in phase 1, the outbox doesn't poll).
+       * For an intent whose outcome the app learned some other way. (The outbox's own ways
+       * are `checkStatus` and the event stream; see provideOutboxStream.)
        */
       resolve(
         id: string,
         outcome: { status: 'done' } | { status: 'needs-attention'; failure: Failure },
       ) {
         moveTo(id, outcome.status === 'done' ? { status: 'done', doneAt: Date.now() } : outcome);
+      },
+
+      /** The server decided (PROTOCOL §3, intent-decided). Ids it doesn't hold are ignored. */
+      settle,
+
+      /** Ask the server about one intent (PROTOCOL §2). Needs the type's `status`. */
+      checkStatus,
+
+      /**
+       * Ask about everything still waiting: `received` (accepted, outcome later) and
+       * `unknown` (no answer in time; it may have landed). The floor: on page-visible, and
+       * on every (re)connect of the event stream.
+       */
+      checkWaiting() {
+        store
+          .entities()
+          .filter((i) => i.state.status === 'received' || i.state.status === 'unknown')
+          .forEach((i) => checkStatus(i.id));
       },
 
       /** Promotion: the feature's memory now contains the real item. */

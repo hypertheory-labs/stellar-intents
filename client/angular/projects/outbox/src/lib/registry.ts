@@ -2,7 +2,7 @@ import { EnvironmentProviders, InjectionToken, makeEnvironmentProviders } from '
 import { IntentType } from './types';
 
 /** Any registered intent type, whatever its payload and candidate. */
-export type AnyIntentType = IntentType<unknown, unknown>;
+export type AnyIntentType = IntentType<unknown, unknown, unknown>;
 
 export const INTENT_TYPES = new InjectionToken<AnyIntentType[]>('outbox intent types');
 

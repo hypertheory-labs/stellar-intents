@@ -3,6 +3,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { DOCUMENT } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Events } from '@ngrx/signals/events';
+import { invalidationEvents } from './invalidation';
 import { OutboxStore } from './outbox-store';
 import { provideIntentTypes } from './registry';
 import {
@@ -73,7 +74,7 @@ function setup({ stream = true } = {}) {
   const http = TestBed.inject(HttpTestingController);
   const seen: { type: string; payload?: unknown }[] = [];
   TestBed.inject(Events)
-    .on(...Object.values(serverEvents))
+    .on(...Object.values(serverEvents), invalidationEvents.invalidated)
     .subscribe((e) => seen.push(e));
   const latest = () => sources[sources.length - 1];
   return { store, http, sources, latest, seen };
@@ -141,8 +142,8 @@ describe('the event stream (PROTOCOL §3)', () => {
     ctx.latest().emit('invalidate', { keys: ['/holds?patronId=P0042'] });
     expect(ctx.seen).toContainEqual(
       expect.objectContaining({
-        type: '[Server] invalidated',
-        payload: { keys: ['/holds?patronId=P0042'] },
+        type: '[Reads] invalidated',
+        payload: { keys: ['/holds?patronId=P0042'], from: 'server' },
       }),
     );
   });

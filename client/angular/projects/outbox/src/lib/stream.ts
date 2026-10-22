@@ -10,6 +10,7 @@ import {
 } from '@angular/core';
 import { type } from '@ngrx/signals';
 import { eventGroup, injectDispatch } from '@ngrx/signals/events';
+import { invalidationEvents } from './invalidation';
 import { OutboxStore } from './outbox-store';
 
 /*
@@ -21,16 +22,14 @@ import { OutboxStore } from './outbox-store';
 */
 
 /**
- * What the stream says that isn't about the outbox's own intents, published for whoever
- * cares (a read cache, mostly). The outbox never knows who's listening.
+ * What the stream says that isn't about intents or invalidation, published for whoever
+ * cares (a read cache, mostly). `invalidate` is announced as `invalidationEvents`.
  */
 export const serverEvents = eventGroup({
   source: 'Server',
   events: {
     /** (Re)connected. Anything that happened while away isn't coming: refetch what's on screen. */
     subscribed: type<void>(),
-    /** Reads under these keys changed (PROTOCOL §3, invalidate). */
-    invalidated: type<{ keys: string[] }>(),
     /** The stream dropped and the session says signed out. The outbox stops reconnecting. */
     signedOut: type<void>(),
   },
@@ -68,7 +67,7 @@ const MAX_RECONNECT_MS = 30_000;
  * Opens the event stream for the app's lifetime (PROTOCOL §3), and:
  * - on `subscribed` (every connect), asks about every waiting intent, and announces it;
  * - on `intent-decided`, settles the intent;
- * - on `invalidate`, announces the keys;
+ * - on `invalidate`, announces the keys (`invalidationEvents`, from the server);
  * - when it drops, asks the session whether we're still signed in, then reconnects with
  *   backoff, or stops.
  */
@@ -101,6 +100,7 @@ function follow({ eventsUrl, sessionUrl, withCredentials = false }: OutboxStream
   const http = inject(HttpClient);
   const create = inject(EVENT_SOURCE);
   const dispatch = injectDispatch(serverEvents);
+  const invalidation = injectDispatch(invalidationEvents);
 
   let source: EventSourceLike | undefined;
   let attempt = 0;
@@ -129,7 +129,7 @@ function follow({ eventsUrl, sessionUrl, withCredentials = false }: OutboxStream
     });
     opened.addEventListener('invalidate', (event) => {
       const invalidate = parse<{ keys: string[] }>(event);
-      if (invalidate) dispatch.invalidated({ keys: invalidate.keys });
+      if (invalidate) invalidation.invalidated({ keys: invalidate.keys, from: 'server' });
     });
     // EventSource retries some failures by itself (readyState back to CONNECTING). The ones
     // it gives up on (CLOSED) include a 401 and, in Chrome, an API restart: those are ours.

@@ -4,6 +4,7 @@ import { patchState, signalStore, withComputed, withMethods, withProps } from '@
 import { addEntity, removeEntity, updateEntity, withEntities } from '@ngrx/signals/entities';
 import { injectDispatch } from '@ngrx/signals/events';
 import { outboxEvents } from './events';
+import { invalidationEvents } from './invalidation';
 import { AnyIntentType, INTENT_TYPES } from './registry';
 import {
   ApologyAction,
@@ -50,6 +51,7 @@ export const OutboxStore = signalStore(
     ),
     _http: inject(HttpClient),
     _dispatch: injectDispatch(outboxEvents),
+    _invalidate: injectDispatch(invalidationEvents),
   })),
   withComputed((store) => {
     const typeOf = (intent: Intent) => store._types.get(intent.type)!;
@@ -103,6 +105,14 @@ export const OutboxStore = signalStore(
       if (now.state.status === 'done' || now.state.status === 'needs-attention') return;
       patchState(store, updateEntity({ id, changes: { state } }));
       transitionEvents[state.status]({ intent: current(id) });
+      if (serverRecorded(now.state, state)) announceInvalidation(current(id));
+    }
+
+    // The type's declared invalidation (see IntentType.invalidates), whenever the server has
+    // recorded something: the same moments the server would send `invalidate` itself.
+    function announceInvalidation(intent: Intent) {
+      const keys = store._types.get(intent.type)?.invalidates?.(intent);
+      if (keys?.length) store._invalidate.invalidated({ keys, from: 'intent' });
     }
 
     function settle(id: string, outcome: Outcome) {
@@ -268,6 +278,22 @@ function failureOf(state: IntentState): Failure | undefined {
       return { kind: 'timeout' };
     default:
       return undefined;
+  }
+}
+
+/**
+ * Did the server just record something? Accepting it (202), deciding it, or deciding against
+ * it after accepting it. A rejection straight from the command (a 4xx) changed nothing.
+ */
+function serverRecorded(from: IntentState, to: IntentState) {
+  switch (to.status) {
+    case 'received':
+    case 'done':
+      return true;
+    case 'needs-attention':
+      return from.status === 'received' || from.status === 'unknown';
+    default:
+      return false;
   }
 }
 

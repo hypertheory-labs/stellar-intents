@@ -9,6 +9,7 @@ export type { AnyIntentType } from './lib/registry';
 export { OutboxStore } from './lib/outbox-store';
 export type { ApologyNotice, Receipt } from './lib/outbox-store';
 export { isCandidate, mergeWithCandidates, readyToRetire } from './lib/promotion';
+export { covers, invalidationEvents } from './lib/invalidation';
 export {
   EVENT_SOURCE,
   provideOutboxStatusChecks,

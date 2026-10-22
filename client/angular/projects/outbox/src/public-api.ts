@@ -9,3 +9,10 @@ export type { AnyIntentType } from './lib/registry';
 export { OutboxStore } from './lib/outbox-store';
 export type { ApologyNotice, Receipt } from './lib/outbox-store';
 export { isCandidate, mergeWithCandidates, readyToRetire } from './lib/promotion';
+export {
+  EVENT_SOURCE,
+  provideOutboxStatusChecks,
+  provideOutboxStream,
+  serverEvents,
+} from './lib/stream';
+export type { EventSourceLike, OutboxStreamOptions } from './lib/stream';

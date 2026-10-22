@@ -1,3 +1,4 @@
 <Solution>
   <Project Path="ReferenceApi/ReferenceApi.csproj" />
+  <Project Path="ReferenceApi.Tests/ReferenceApi.Tests.csproj" />
 </Solution>

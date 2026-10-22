@@ -14,7 +14,8 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddFisher(options =>
     {
-        options.Connection("Data Source=app.db");
+        // app.db beside the project unless configured (the tests use a throwaway file)
+        options.Connection(builder.Configuration.GetConnectionString("Holds") ?? "Data Source=app.db");
         // the hold as it stands now, written in the same transaction as its events
         options.Projections.Snapshot<Hold>(SnapshotLifecycle.Inline);
         options.InitialData.Add(new SeedHolds());
@@ -64,3 +65,6 @@ app.MapGet("/", () => Results.Redirect("/scalar")).ExcludeFromDescription();
 app.MapWolverineEndpoints();
 app.MapDevReset(); // Development only; see Dev/DevReset.cs
 app.Run();
+
+// visible to the tests (Alba boots the real app)
+public partial class Program;

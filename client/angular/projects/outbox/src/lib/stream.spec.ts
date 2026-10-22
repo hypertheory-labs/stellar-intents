@@ -181,7 +181,7 @@ describe('the event stream (PROTOCOL §3)', () => {
     vi.advanceTimersByTime(60_000);
 
     expect(ctx.sources.length).toBe(1);
-    expect(ctx.seen.map((e) => e.type)).toEqual(['[Server] signedOut']);
+    expect(ctx.seen.map((e) => e.type)).toEqual(['[Server] disconnected', '[Server] signedOut']);
   });
 
   it('dropped and the session can’t be reached either: it keeps trying', () => {

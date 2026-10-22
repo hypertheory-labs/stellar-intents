@@ -30,6 +30,8 @@ export const serverEvents = eventGroup({
   events: {
     /** (Re)connected. Anything that happened while away isn't coming: refetch what's on screen. */
     subscribed: type<void>(),
+    /** The stream dropped. Until `subscribed` again, nobody is hearing about changes. */
+    disconnected: type<void>(),
     /** The stream dropped and the session says signed out. The outbox stops reconnecting. */
     signedOut: type<void>(),
   },
@@ -143,6 +145,7 @@ function follow({ eventsUrl, sessionUrl, withCredentials = false }: OutboxStream
   function dropped(closed: EventSourceLike) {
     closed.close();
     if (stopped) return;
+    dispatch.disconnected();
     http.get<{ isAuthenticated: boolean }>(sessionUrl).subscribe({
       next: (session) => {
         if (session.isAuthenticated) return later();

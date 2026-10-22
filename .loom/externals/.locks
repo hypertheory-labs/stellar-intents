@@ -1,0 +1,7 @@
+# loomctl locks — one record per adopted document.
+# path<TAB>url<TAB>etag[<TAB>visibility]
+# The url is resolved: a short form would follow whatever the default branch
+# is at the time you ask. visibility is what the source could be read as when
+# it was fetched, because that is checked once and the copy is durable.
+git.hypertheory-labs.dev/loom/annotating/annotating.md	https://git.hypertheory-labs.dev/loom/annotating/raw/branch/main/.loom/published/annotating.md	"9b1f7e6ca92f2339b2d433686c27845362944bdb"	public
+git.hypertheory-labs.dev/loom/cart/cart.md	https://git.hypertheory-labs.dev/loom/cart/raw/branch/main/.loom/published/cart.md	"15331f1a9cc81bf61a44830cfbb7c274f4c2b119"	public

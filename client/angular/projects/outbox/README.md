@@ -214,19 +214,19 @@ effect(() => {
 
 ### `OutboxStore` (root signal store)
 
-| Member                      | What it does                                                                                     |
-| --------------------------- | ------------------------------------------------------------------------------------------------ |
-| `enqueue(type, payload)`    | Creates the intent (new id), publishes `intentRequested`, sends it. Returns the intent.          |
-| `resolve(id, outcome)`      | Records an outcome learned some other way. Ignored for unknown ids and decided intents.          |
+| Member                      | What it does                                                                                       |
+| --------------------------- | -------------------------------------------------------------------------------------------------- |
+| `enqueue(type, payload)`    | Creates the intent (new id), publishes `intentRequested`, sends it. Returns the intent.            |
+| `resolve(id, outcome)`      | Records an outcome learned some other way. Ignored for unknown ids and decided intents.            |
 | `settle(id, outcome)`       | The same, from an `Outcome` (`done`, or `needs-attention` with a `detail`), as the stream says it. |
-| `checkStatus(id)`           | Asks the type's `status.url`; settles if the answer is decided. A 404 is "not recorded yet".      |
-| `checkWaiting()`            | `checkStatus` for every `received` and `unknown` intent.                                         |
-| `retire(id)`                | Promotion: removes the intent, publishes `intentRetired`.                                        |
-| `dismiss(id)`               | The user let it go: removes the intent, publishes `intentDismissed`.                             |
-| `entities()`, `entityMap()` | Every intent still held (from `withEntities`).                                                   |
-| `receipts()`                | `{ intentId, status, text }` for every intent held. Always true.                                 |
-| `apologies()`               | `{ intentId, status, message, actions }` for `unknown`, `needs-attention`, and `failed-to-send`. |
-| `candidates(type)`          | `Candidate<T>[]` for that type, except failed ones.                                              |
+| `checkStatus(id)`           | Asks the type's `status.url`; settles if the answer is decided. A 404 is "not recorded yet".       |
+| `checkWaiting()`            | `checkStatus` for every `received` and `unknown` intent.                                           |
+| `retire(id)`                | Promotion: removes the intent, publishes `intentRetired`.                                          |
+| `dismiss(id)`               | The user let it go: removes the intent, publishes `intentDismissed`.                               |
+| `entities()`, `entityMap()` | Every intent still held (from `withEntities`).                                                     |
+| `receipts()`                | `{ intentId, status, text }` for every intent held. Always true.                                   |
+| `apologies()`               | `{ intentId, status, message, actions }` for `unknown`, `needs-attention`, and `failed-to-send`.   |
+| `candidates(type)`          | `Candidate<T>[]` for that type, except failed ones.                                                |
 
 ### Sending
 

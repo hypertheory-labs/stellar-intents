@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using ReferenceApi.Dev;
 using ReferenceApi.Holds;
+using ReferenceApi.Session;
 using Fisher;
 using JasperFx.Events.Daemon;
 using JasperFx.Events.Projections;
@@ -32,6 +33,9 @@ builder.Host.UseWolverine(opts =>
 });
 builder.Services.AddWolverineHttp();
 
+// who the user is: a cookie session (see Session/SessionSetup.cs)
+builder.Services.AddCookieSession();
+
 // "status": "placed", not "status": 1
 builder.Services.ConfigureHttpJsonOptions(json =>
     json.SerializerOptions.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase)));
@@ -57,6 +61,9 @@ builder.Services.AddCors(cors => cors.AddDefaultPolicy(policy => policy
 var app = builder.Build();
 
 app.UseCors();
+app.UseAuthentication();
+app.UseAuthorization();
+app.UseRequireIdempotencyKey(); // PROTOCOL §1, and the CSRF defence (see Session/)
 app.MapOpenApi();
 // The same document, as a page to read and try: /scalar. The root redirects there, so
 // `dotnet run` (which opens the browser at /) lands on the API's reference.
@@ -64,6 +71,7 @@ app.MapScalarApiReference(options => options.WithTitle("Holds reference API"));
 app.MapGet("/", () => Results.Redirect("/scalar")).ExcludeFromDescription();
 app.MapWolverineEndpoints();
 app.MapDevReset(); // Development only; see Dev/DevReset.cs
+app.MapDevSignIn(); // Development only; see Session/DevSignIn.cs
 app.Run();
 
 // visible to the tests (Alba boots the real app)

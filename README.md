@@ -22,7 +22,7 @@ implementation of one side of it.
 
 | Path                                                                     | What                                                                                              | Status                            |
 | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------- | --------------------------------- |
-| [`docs/`](docs)                                                          | The wire protocol.                                                                                | Draft 0.1                         |
+| [`docs/`](docs)                                                          | The wire protocol.                                                                                | Draft 0.2                         |
 | [`client/angular/projects/outbox`](client/angular/projects/outbox)       | The browser client: intents, receipts, candidates, apologies; the event stream; a read cache.     | In memory, tested                 |
 | [`client/angular/projects/url-state`](client/angular/projects/url-state) | The URL as a source of truth: `withRouter`, `withQueryParam`, `withMatrixParam` for Signal Store. | Experimental, tested              |
 | [`server/dotnet/ReferenceApi`](server/dotnet/ReferenceApi)               | A reference server: library holds, on Wolverine + Fisher (event-sourced), .NET 10.                | §0–3, tested                      |

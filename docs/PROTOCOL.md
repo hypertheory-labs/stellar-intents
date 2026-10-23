@@ -1,4 +1,4 @@
-# Outbox wire protocol
+# Intent wire protocol
 
 **Draft 0.2, 2026-10-23.** How a browser and an API agree about who's asking, about
 commands the user asked for, and about reads that have gone stale. Framework-neutral:

@@ -7,10 +7,12 @@ things the code hides?
 
 ## Place a hold
 
-- **Intent:** place a hold on {title} at {branch}.
+- **Intent:** Patron → Library: place a hold on {title} at {branch}.
   → `placeHold` (demo `holds.ts`): `PUT /holds/{intentId}`. The intent's id is the hold's.
 - **Rests on:**
   - who's asking: the session. → `[Authorize]`, the patron comes from the cookie.
+  - acting for whom: themselves only. ⚠ A librarian can't place a hold _for_ a patron;
+    "on behalf of" isn't modelled.
   - the title exists, and the branch exists. ⚠ Nothing checks either. Any `titleId` is
     accepted.
   - the patron is in good standing. ⚠ Not modelled.
@@ -22,12 +24,19 @@ things the code hides?
 - **Then:** the hold is placed (`HoldPlaced`).
   → `IntentDecided: done`. Invalidates the hold, the patron's list, and the title's wait
   list (`HoldKeys`).
+  **Tell:** the patron (the person). → `IntentDecided` is addressed to the patron, but ⚠
+  it's only delivered to tabs open at the time. With none open, only a later status check
+  finds out, and nobody tells the patron "your hold went through".
 - **Otherwise:**
   - at the limit → `no`: "You already have 3 holds, the limit." → `HoldRejected`.
-    ⚠ No offer. "Cancel one of them" is the obvious one.
+    ⚠ No offer. **Library → Patron:** "cancel one of them?" is the obvious one.
+  - the decision itself fails (an exception, retries used up) → ⚠ **nothing.** The
+    message is dead-lettered (Wolverine's default, as I understand it; not checked), and the patron's intent sits in `received` with no word.
+    Nobody escalates. (**Library → Librarian** would be the shape.)
   - signed out → `sign-in` → `interrupted`, same id.
   - the same id with a different body, or another patron's → `no` (409).
-  - **cancelled before it was decided** → ⚠ **nothing.** The decision finds the hold
+  - **the patron cancels it first** (another intent, same hold): withdrawn. **Tell:**
+    this browser, quietly. Before the fix → ⚠ **nothing.** The decision finds the hold
     cancelled and returns without a word. No `IntentDecided` is sent, and the status
     check answers `cancelled`, which the intent type doesn't map. So the intent sits in
     `received` forever. Worse, because the cancelled hold leaves the patron's list, the
@@ -38,7 +47,7 @@ things the code hides?
 
 ## Cancel a hold
 
-- **Intent:** cancel my hold on {title}.
+- **Intent:** Patron → Library: cancel my hold on {title}.
   → `cancelHold`: `DELETE /holds/{holdId}`, with a **new** intent id as its
   `Idempotency-Key`. Not a create, so the intent id isn't the hold's.
 - **Rests on:**
@@ -47,6 +56,8 @@ things the code hides?
 - **Manifests when:** the hold isn't rejected. → decided inside the request (no `202`).
 - **Then:** the hold is cancelled (`HoldCancelled`).
   → `204`, so `done` at once. Invalidates the same three reads.
+  **Tell:** this browser (the `204`). The patron's other tabs only see the hold leave
+  their list. That's enough, because nothing is pending there.
 - **Otherwise:**
   - rejected → `no`: "This hold was never placed, so there's nothing to cancel." (409)
   - already cancelled → `done` (a repeat is a success).
@@ -72,3 +83,6 @@ things the code hides?
 3. **Bases nobody checks** (the title, the branch, good standing). _Rests on_ makes them
    visible. Whether they matter is the business's call.
 4. **Apologies with no offer**, where one is obvious ("cancel one of them").
+5. **With arrows and addresses** (added after): a decision that's addressed to the
+   person but delivered only to open tabs; a dead-lettered decision that nobody hears
+   about; and no "on behalf of" at all.

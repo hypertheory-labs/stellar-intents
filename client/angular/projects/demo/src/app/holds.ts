@@ -39,7 +39,12 @@ export interface PlaceHoldPayload {
 /** Placing a hold: a create. The intent's id is the hold's id. */
 export const placeHold = defineIntentType<PlaceHoldPayload, Hold, Hold>({
   name: 'place-hold',
-  request: ({ id, payload }) => ({ method: 'PUT', url: `/api/holds/${id}`, body: payload }),
+  // patronId is in the payload for the read keys only. The server takes it from the session.
+  request: ({ id, payload: { titleId, branchCode } }) => ({
+    method: 'PUT',
+    url: `/api/holds/${id}`,
+    body: { titleId, branchCode },
+  }),
   receipt: ({ payload }) =>
     `We've received your request to place a hold on ${titleName(payload.titleId)}.`,
   candidate: ({ id, payload, requestedAt }) => ({

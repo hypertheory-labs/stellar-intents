@@ -1,6 +1,7 @@
 import { provideHttpClient, withFetch } from '@angular/common/http';
 import { ApplicationConfig, provideBrowserGlobalErrorListeners } from '@angular/core';
 import {
+  provideIntentStorage,
   provideIntentTypes,
   provideOutboxStatusChecks,
   provideOutboxStream,
@@ -18,5 +19,10 @@ export const appConfig: ApplicationConfig = {
     provideOutboxStatusChecks(),
     provideOutboxStream({ eventsUrl: '/api/events', sessionUrl: '/api/session' }),
     provideReads({ apiRoot: '/api' }),
+    // Intents survive a reload or a closed tab, stored per patron (IndexedDB).
+    provideIntentStorage({
+      sessionUrl: '/api/session',
+      userOf: (session: { patronId: string | null }) => session.patronId ?? undefined,
+    }),
   ],
 };

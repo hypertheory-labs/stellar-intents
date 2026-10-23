@@ -279,6 +279,31 @@ What a conforming client has, in any framework. Names are suggestions.
 A client **MUST NOT** write candidates into memory (or the read cache). Because it never
 does, it never has to roll anything back.
 
+### Durability [Proposed]
+
+An intent belongs to **this browser** until the server first answers it, and to the
+**server** after that. Storing intents (IndexedDB, say) only stretches the first window
+across a reload or a crash. It can't make an intent belong to the *user*; only reaching
+the server does that. What it's for is the lost submit: the tab closed before the answer
+came, and nobody knows whether it went.
+
+A client that stores intents:
+
+- **MUST** store the intent before sending it. Otherwise a tab that closes mid-send
+  leaves nothing to check.
+- **MUST** record whose intent it is (the session's user, §0), and **MUST NOT** send or
+  check an intent for anyone else. On sign-out it **SHOULD** delete that user's stored
+  intents, because the computer may be shared.
+- After a reload, **MUST** status-check (§2) every stored intent that was `sent`,
+  `received`, or `unknown` before resending anything. Resend (same id) only on a `404`.
+- **MUST NOT** send a stored intent that was never answered once it's older than its
+  intent type says a request stays good. Ask the person instead. Acting on yesterday's
+  request is acting for someone whose situation may have changed.
+- **SHOULD** let only one tab act on a stored intent at a time. Two sends are safe on the
+  server (§1), but the person should see one receipt.
+- **SHOULD** word the receipt of an unanswered intent as "saved on this device", not
+  "saved". Storage can be cleared, and an intent nobody remembers can't be apologised for.
+
 ---
 
 ## The server
@@ -342,13 +367,27 @@ implementation can be checked without reading the reference code.
 17. A `needs-attention` or `failed-to-send` intent shows no candidate, and shows its apology.
 18. A `done` intent whose id is in memory is retired.
 
+**Durability [Proposed]**
+
+19. An intent is `sent` and the page reloads before the answer; the server had recorded
+    it → after the reload, a status check reaches its outcome, and nothing is resent.
+20. As 19, but the server never got it (status check: `404`) → resent with the same id.
+21. Pat has a stored intent; Pat signs out and Sam signs in on the same browser →
+    nothing is sent or checked for Pat's intent.
+22. A stored intent that was never answered is older than its type's limit → it isn't
+    sent; the person is asked.
+23. Two tabs open with the same stored intent → one request goes out, and one receipt
+    shows.
+
 ---
 
 ## Not in this protocol (yet)
 
-- **Durability across reloads.** Clients may store intents (IndexedDB) and resend them
-  with the same id; §1's repeat rules make that safe. How they store them is their
-  business.
+- **Durability across devices.** An intent stored in one browser is invisible to the
+  user's other browsers until the server has it, and even then only a create can be
+  found again (by its id). Finding other intents needs a server-side record of intents,
+  which is undecided. How a client stores intents is its own business; what storing them
+  may promise is in [Durability](#durability-proposed).
 - **Ordering between intents.** Every intent is independent. If two must apply in order,
   that's a single command, or a per-type queue in the client.
 - **Replay.** Deliberately left out; see the `subscribed` rule.

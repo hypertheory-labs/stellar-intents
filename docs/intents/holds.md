@@ -32,6 +32,9 @@ things the code hides?
     check answers `cancelled`, which the intent type doesn't map. So the intent sits in
     `received` forever. Worse, because the cancelled hold leaves the patron's list, the
     place-hold candidate **reappears as a guess**. Confirmed in the browser.
+    **Fixed** (`b10ab10` and the demo commit after it): the decision now sends an outcome
+    (`needs-attention` for now; PROTOCOL proposes "withdrawn"), and the demo dismisses
+    the placement when the cancel lands.
 
 ## Cancel a hold
 
@@ -52,7 +55,8 @@ things the code hides?
   - **no answer in time** → `unknown`, and ⚠ **forever.** The type declares no status
     check, and the server never sends `IntentDecided` for a cancel, so nothing can settle
     it. Yet the read model that would confirm it **exists**: `GET /holds/{holdId}`
-    answers `status: cancelled`. It just isn't declared.
+    answers `status: cancelled`. It just wasn't declared. **Fixed:** the type now declares
+    it.
 - ⚠ **The server never records the cancel's intent id.** `DELETE` is idempotent by
   nature, so it doesn't need to. But it means "what became of intent X?" has no answer
   for a cancel. That's the ledger question (shapes A/B/C), arrived at from the spec.

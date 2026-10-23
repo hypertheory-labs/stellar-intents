@@ -75,15 +75,24 @@ export const placeHold = defineIntentType<PlaceHoldPayload, Hold, Hold>({
   timeoutMs: 10_000,
   status: {
     url: ({ id }) => `/api/holds/${id}`,
-    outcome: (hold) =>
-      hold.status === 'placed'
-        ? { status: 'done' }
-        : hold.status === 'rejected'
-          ? { status: 'needs-attention', detail: hold.reason ?? undefined }
-          : undefined,
+    outcome: (hold) => {
+      switch (hold.status) {
+        case 'placed':
+          return { status: 'done' };
+        case 'rejected':
+          return { status: 'needs-attention', detail: hold.reason ?? undefined };
+        case 'cancelled': // cancelled before it was decided; the server says the same
+          return { status: 'needs-attention', detail: cancelledFirst };
+        case 'requested':
+          return undefined;
+      }
+    },
   },
   invalidates: ({ id, payload }) => holdKeys(id, payload.patronId, payload.titleId),
 });
+
+/** Server: EvaluateHoldHandler.CancelledFirst. */
+const cancelledFirst = 'You cancelled this request before it was decided.';
 
 export interface CancelHoldPayload {
   holdId: string;
@@ -96,7 +105,7 @@ export interface CancelHoldPayload {
  * memory got it?" doesn't apply. Its promotion is the opposite: done, and the hold is
  * gone from memory (see App).
  */
-export const cancelHold = defineIntentType<CancelHoldPayload>({
+export const cancelHold = defineIntentType<CancelHoldPayload, never, Hold>({
   name: 'cancel-hold',
   request: ({ payload }) => ({ method: 'DELETE', url: `/api/holds/${payload.holdId}` }),
   receipt: ({ payload }) =>
@@ -105,6 +114,20 @@ export const cancelHold = defineIntentType<CancelHoldPayload>({
     say: ({ payload }, failure) =>
       `We couldn't cancel your hold on ${titleName(payload.titleId)}${failure.detail ? `: ${failure.detail}` : '.'}`,
     actions: [],
+  },
+  // The read that confirms a cancel: the hold itself says "cancelled". Without this, a
+  // cancel whose answer was lost stayed unknown forever (docs/intents/holds.md).
+  status: {
+    url: ({ payload }) => `/api/holds/${payload.holdId}`,
+    outcome: (hold) =>
+      hold.status === 'cancelled'
+        ? { status: 'done' }
+        : hold.status === 'rejected'
+          ? {
+              status: 'needs-attention',
+              detail: "This hold was never placed, so there's nothing to cancel.",
+            }
+          : undefined,
   },
   invalidates: ({ payload }) => holdKeys(payload.holdId, payload.patronId, payload.titleId),
 });

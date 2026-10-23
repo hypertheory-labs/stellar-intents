@@ -257,10 +257,16 @@ export class App {
         (h) => h.id,
       );
       const inMemory = new Set(memory.map((h) => h.id));
-      const cancelled = this.cancelling()
-        .filter((c) => done.some((i) => i.id === c.intentId) && !inMemory.has(c.holdId))
-        .map((c) => c.intentId);
-      untracked(() => [...placed, ...cancelled].forEach((id) => this.outbox.retire(id)));
+      const cancelled = this.cancelling().filter(
+        (c) => done.some((i) => i.id === c.intentId) && !inMemory.has(c.holdId),
+      );
+      untracked(() => {
+        [...placed, ...cancelled.map((c) => c.intentId)].forEach((id) => this.outbox.retire(id));
+        // A hold cancelled before it was decided: its place-hold intent (same id as the
+        // hold) is over too. The person withdrew it themselves, so it's dismissed, not
+        // apologised for, and its guess doesn't come back.
+        cancelled.forEach((c) => this.outbox.dismiss(c.holdId));
+      });
     });
   }
 

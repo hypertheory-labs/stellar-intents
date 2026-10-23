@@ -293,7 +293,8 @@ across a reload or a crash. It can't make an intent belong to the *user*; only r
 the server does that. What it's for is the lost submit: the tab closed before the answer
 came, and nobody knows whether it went.
 
-A client that stores intents:
+A client that stores intents (the reference client does the first three, except
+resending; see the outbox README):
 
 - **MUST** store the intent before sending it. Otherwise a tab that closes mid-send
   leaves nothing to check.
@@ -374,6 +375,8 @@ implementation can be checked without reading the reference code.
 18. A `done` intent whose id is in memory is retired.
 
 **Durability [Proposed]**
+
+Scenarios 19 and 21 pass in the reference client. 20, 22 and 23 aren't built.
 
 19. An intent is `sent` and the page reloads before the answer; the server had recorded
     it → after the reload, a status check reaches its outcome, and nothing is resent.

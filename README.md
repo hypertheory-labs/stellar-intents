@@ -75,8 +75,10 @@ Rough order, smallest useful step first:
    (A Signal Store `withQuery` isn't built.)
 3. **Promotion without an effect**: intent types say where their real item shows up, and
    the cache retires done intents when it does.
-4. **Durability**: intents (and maybe reads) in IndexedDB, resent with the same id after a
-   reload.
+4. **Durability**: started. Intents are stored per user in IndexedDB before they're sent,
+   and status-checked after a reload (`provideIntentStorage`). Not yet: resending, a time
+   limit on old requests, one tab at a time, clearing on sign-out. What storing may
+   promise is in PROTOCOL's Durability section.
 
 ## Rules this repo keeps
 

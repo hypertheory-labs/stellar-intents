@@ -246,6 +246,22 @@ request.
 - Refetches send `cache: 'no-cache'`, so they reach the server (a cheap 304 with an ETag)
   rather than the browser's HTTP cache. That needs `withFetch()`.
 
+### 8. Surviving a reload
+
+```ts
+provideIntentStorage({
+  sessionUrl: '/api/session',
+  userOf: (session: { patronId: string | null }) => session.patronId ?? undefined,
+}),
+```
+
+It asks the session who's signed in and stamps every intent with that id. Each intent is
+stored (IndexedDB) **before** it's sent, so a tab closed mid-send still leaves something
+to ask about. On startup it puts back only that user's intents and status-checks the
+ones still waiting. One that was `sent` comes back `unknown`: nothing from the old page is
+in flight any more. It never resends. Until the session answers, or while signed out,
+intents are sent but not stored. For tests, pass `storage: memoryIntentStorage()`.
+
 ## Reference
 
 ### `OutboxStore` (root signal store)
@@ -319,10 +335,12 @@ replace in tests).
 
 ## Not yet
 
-Phase 1 is in memory and deliberately small. Not built:
+Not built:
 
-- **Durability.** A reload forgets every intent. (Later: IndexedDB, written in the
-  same transaction as the candidate, and found again at startup.)
+- **The rest of durability.** Stored intents are only status-checked, never resent
+  (even on a `404`). No time limit on old requests, no one-tab-at-a-time, no clearing on
+  sign-out. And a stored intent that was decided while you were away just appears in
+  memory: nobody tells you "your hold went through".
 - **Retry.** An apology's `actions` are declared, but nothing performs them. A retry
   after a decision will be a _new_ intent; reusing the id is only for an outcome
   never known.

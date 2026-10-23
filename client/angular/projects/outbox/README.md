@@ -43,15 +43,18 @@ stateDiagram-v2
     failed_to_send --> [*]: dismiss()
 ```
 
-| State             | What's true                                                              | Receipt | Candidate          | Apology  |
-| ----------------- | ------------------------------------------------------------------------ | ------- | ------------------ | -------- |
-| `requested`       | It's held here. Nothing has left.                                        | yes     | yes                |          |
-| `sent`            | It left. We don't know if it arrived.                                    | yes     | yes                |          |
-| `unknown`         | No answer in time. It **may have landed**. Not a failure.                | yes     | yes                | timeout  |
-| `received`        | The server has it (202). The outcome is later. **Received is not done.** | yes     | yes                |          |
-| `done`            | The outcome is known and good.                                           | yes     | yes, until retired |          |
-| `needs-attention` | The outcome is known and bad.                                            | yes     | no                 | rejected |
-| `failed-to-send`  | As far as we can tell, it never reached the server.                      | yes     | no                 | network  |
+| State             | What's true                                                              | Receipt | Candidate          | Remedy    |
+| ----------------- | ------------------------------------------------------------------------ | ------- | ------------------ | --------- |
+| `requested`       | It's held here. Nothing has left.                                        | yes     | yes                |           |
+| `sent`            | It left. We don't know if it arrived.                                    | yes     | yes                |           |
+| `unknown`         | No answer in time. It **may have landed**. Not a failure.                | yes     | yes                | wait      |
+| `received`        | The server has it (202). The outcome is later. **Received is not done.** | yes     | yes                |           |
+| `done`            | The outcome is known and good.                                           | yes     | yes, until retired |           |
+| `needs-attention` | The outcome is known and bad.                                            | yes     | no                 | no \*     |
+| `failed-to-send`  | As far as we can tell, it never reached the server.                      | yes     | no                 | try-again |
+
+\* Or `sign-in` (a `401`), or `try-again` (a `5xx`). Apologies are sorted by what the
+person can do next: see PROTOCOL's Remedies.
 
 **A decision is final.** `done` and `needs-attention` never move again, except out
 (retire, dismiss). Answers can arrive in any order (the PUT's own answer, a status
@@ -108,7 +111,7 @@ export const placeHold = defineIntentType<PlaceHoldPayload, Hold>({
   candidate: ({ id, payload }) => ({ id, titleId: payload.titleId, status: 'requested' }),
   apology: {
     say: ({ payload }, failure) =>
-      failure.kind === 'timeout'
+      failure.remedy === 'wait'
         ? `We're not sure your hold on ${payload.titleName} went through. We're still checking.`
         : `We couldn't place your hold on ${payload.titleName}: ${failure.detail ?? 'please try again.'}`,
     actions: ['retry'],
@@ -285,8 +288,9 @@ intents are sent but not stored. For tests, pass `storage: memoryIntentStorage()
 - One `HttpClient.request` per intent, with `Idempotency-Key: {intent.id}` and the
   type's method, url, and body. (Only `POST`, `PUT`, `PATCH`, `DELETE`.)
 - **202** → `received`. **Any other 2xx** → `done`.
-- **Status 0** → `failed-to-send` (`network`). **Any other error** → `needs-attention`
-  (`rejected`, with the HTTP status and a problem+json `detail` if the body has one).
+- **Status 0** → `failed-to-send` (remedy `try-again`). **Any other error** →
+  `needs-attention`, with the HTTP status and a problem+json `detail` if the body has one.
+  Its remedy is `sign-in` for a `401`, `try-again` for a `5xx`, and `no` otherwise.
 - **No answer in `timeoutMs`** → `unknown`. The request is **not** cancelled: a late
   answer still lands, unless the intent was decided some other way meanwhile.
 

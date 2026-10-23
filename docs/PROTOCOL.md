@@ -99,6 +99,8 @@ Content-Type: application/json
 | no response (status 0)        | As far as the client can tell, it never reached the server.                 | `failed-to-send`                                |
 | no answer within the timeout  | **Not a failure.** It may have landed. The request is not cancelled.        | `unknown`, until a late answer or an outcome    |
 
+What the client then tells the person is sorted by remedy; see [Remedies](#remedies).
+
 A `202` **SHOULD** carry `Location:` pointing at the status resource (usually the
 resource itself) and **SHOULD** have the resource's current representation as its body.
 
@@ -285,6 +287,38 @@ What a conforming client has, in any framework. Names are suggestions.
 A client **MUST NOT** write candidates into memory (or the read cache). Because it never
 does, it never has to roll anything back.
 
+### Remedies [Implemented]
+
+An apology is sorted by **what the person can do next**, not by what went wrong
+underneath. The reasons belong to the business (a five-minute window for some customers,
+thirty days for others, six holds for members) and can't be counted. What to do next
+can:
+
+| Remedy      | When                                                                  |
+| ----------- | --------------------------------------------------------------------- |
+| `try-again` | No response (`failed-to-send`), or a `5xx`: the server failed.        |
+| `wait`      | No answer in time (`unknown`). It may have landed.                    |
+| `no`        | Any other `4xx`, or a decision against. Why is the problem's `detail`. |
+| `sign-in`   | `401`: the session has ended.                                         |
+
+Today a status code is enough to choose one. A remedy that needs more (below) will be a
+problem+json `type`: the countable part, for a machine. `detail` stays the part for a
+person.
+
+**[Proposed]** More remedies, each waiting on something:
+
+- `look-again`: the reads the intent was based on have changed; here's what changed.
+  Needs intents to say what they were based on (read keys and ETags), and a problem
+  `type`. Whether the server rejects, or accepts anyway within some window, is the
+  business's policy, never the protocol's.
+- `still-want-it`: a stored intent too old to send ([Durability](#durability-proposed)).
+
+**Open:** a `5xx` or a `401` means the server *didn't decide*, yet the intent goes to
+`needs-attention`, which is final. So "try again" today means a new intent with a new id,
+and if the `5xx` came after the server committed, that's a duplicate. Either these
+should move to a state that isn't final and resend with the same id, or a `5xx` from a
+command must promise nothing was recorded.
+
 ### Durability [Proposed]
 
 An intent belongs to **this browser** until the server first answers it, and to the
@@ -339,8 +373,9 @@ implementation can be checked without reading the reference code.
 1. Enqueue → the request carries `Idempotency-Key` equal to the intent id; the intent is
    `sent`.
 2. `202` → `received`. `201`/`200`/`204` → `done`.
-3. `409` with problem+json `detail: "X"` → `needs-attention`, and the apology can say "X".
-4. `500` with an HTML body → `needs-attention`, no `detail`, no crash.
+3. `409` with problem+json `detail: "X"` → `needs-attention`, remedy `no`, and the apology
+   can say "X". A `401` → remedy `sign-in`.
+4. `500` with an HTML body → `needs-attention`, remedy `try-again`, no `detail`, no crash.
 5. Network failure (status 0) → `failed-to-send`.
 6. No answer within the timeout → `unknown`; then a late `202` → `received`; a late `200`
    → `done`.

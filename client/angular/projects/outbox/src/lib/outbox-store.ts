@@ -66,6 +66,8 @@ export const OutboxStore = signalStore(
     _storage: inject(INTENT_STORAGE, { optional: true }),
     /** Whose intents these are, once the session has said (see provideIntentStorage). */
     _owner: { id: undefined as string | undefined },
+    /** Intents requested since this page loaded are ones it may resend on its own. */
+    _pageStartedAt: Date.now(),
   })),
   withComputed((store) => {
     const typeOf = (intent: Intent) => store._types.get(intent.type)!;
@@ -105,7 +107,7 @@ export const OutboxStore = signalStore(
       done: store._dispatch.intentDone,
       unknown: store._dispatch.intentUnknown,
       'needs-attention': store._dispatch.intentNeedsAttention,
-      'failed-to-send': store._dispatch.intentFailedToSend,
+      interrupted: store._dispatch.intentInterrupted,
     } satisfies Record<IntentStatus, unknown>;
 
     function current(id: string) {
@@ -171,11 +173,20 @@ export const OutboxStore = signalStore(
       });
     }
 
+    // An interrupted intent may have landed after all (a 5xx after the commit), so it's
+    // asked about too.
     function checkWaiting() {
       store
         .entities()
-        .filter((i) => i.state.status === 'received' || i.state.status === 'unknown')
+        .filter((i) => ['received', 'unknown', 'interrupted'].includes(i.state.status))
         .forEach((i) => checkStatus(i.id));
+    }
+
+    /** Send an interrupted intent again, with the same id. */
+    function resend(id: string) {
+      const intent = current(id);
+      const type = intent && store._types.get(intent.type);
+      if (intent?.state.status === 'interrupted' && type) send(intent, type);
     }
 
     function send(intent: Intent, type: AnyIntentType) {
@@ -303,6 +314,25 @@ export const OutboxStore = signalStore(
         checkWaiting();
       },
 
+      /**
+       * Send an interrupted intent again, with the same id: the person said "try again",
+       * or they've signed back in.
+       */
+      resend,
+
+      /**
+       * The client may deliver what the person asked for on its own, but only what was
+       * asked on this page. One restored from storage may be from yesterday, so it waits
+       * for the person. Called when the stream (re)connects: the server is reachable, and
+       * the session is valid.
+       */
+      resendInterrupted() {
+        store
+          .entities()
+          .filter((i) => i.state.status === 'interrupted' && i.requestedAt >= store._pageStartedAt)
+          .forEach((i) => resend(i.id));
+      },
+
       /** Promotion: the feature's memory now contains the real item. */
       retire(id: string) {
         const intent = current(id);
@@ -328,7 +358,7 @@ export const OutboxStore = signalStore(
 function failureOf(state: IntentState): Failure | undefined {
   switch (state.status) {
     case 'needs-attention':
-    case 'failed-to-send':
+    case 'interrupted':
       return state.failure;
     case 'unknown':
       return { remedy: 'wait' };
@@ -368,32 +398,28 @@ function resumed(state: IntentState): IntentState {
   }
 }
 
-/** A guess is still worth showing until the intent fails or is retired. */
+/** A guess is still worth showing until the intent is decided against, or retired. */
 function hasCandidate(state: IntentState) {
-  return state.status !== 'needs-attention' && state.status !== 'failed-to-send';
+  return state.status !== 'needs-attention';
 }
 
-// WHY a 5xx is "try again", not "no": the server failed, it didn't decide. (Nor did a 401.)
-// Both still land in needs-attention, which is final: an open question in PROTOCOL's
-// Remedies.
-function remedyFor(status: number): Remedy {
-  if (status === 401) return 'sign-in';
-  if (status >= 500) return 'try-again';
-  return 'no';
-}
-
+// WHY only a 4xx (other than 401) is final: it's the server deciding. No response, a 5xx,
+// and a 401 aren't decisions, so the intent stays alive and goes again with the same id.
+// A new id would be a new request, and a duplicate if the first one landed after all.
 function stateForError(error: HttpErrorResponse): IntentState {
   if (error.status === 0) {
-    // As far as we can tell, it never reached the server.
-    return { status: 'failed-to-send', failure: { remedy: 'try-again' } };
+    return { status: 'interrupted', failure: { remedy: 'try-again' } };
   }
-  const detail = (error.error as { detail?: unknown } | null)?.detail;
-  return {
-    status: 'needs-attention',
-    failure: {
-      remedy: remedyFor(error.status),
-      status: error.status,
-      detail: typeof detail === 'string' ? detail : undefined,
-    },
-  };
+  const body = error.error as { detail?: unknown } | null;
+  const detail = typeof body?.detail === 'string' ? body.detail : undefined;
+  if (error.status === 401) {
+    return { status: 'interrupted', failure: { remedy: 'sign-in', status: 401, detail } };
+  }
+  if (error.status >= 500) {
+    return {
+      status: 'interrupted',
+      failure: { remedy: 'try-again', status: error.status, detail },
+    };
+  }
+  return { status: 'needs-attention', failure: { remedy: 'no', status: error.status, detail } };
 }

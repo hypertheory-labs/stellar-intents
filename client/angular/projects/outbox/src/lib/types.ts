@@ -34,10 +34,10 @@ export interface Intent<TPayload = unknown> {
  * Where an intent is in its life: the worksheet's Part 2 diagram.
  *
  *   requested ─► sent ─► received ─► done
- *       │          │         │
- *       │          │         └─► needs-attention   (the outcome failed later)
- *       │          └─► unknown                      (sent, no answer in time)
- *       └─► failed-to-send                          (it never left)
+ *                    │         │
+ *                    │         └─► needs-attention   (decided against: final)
+ *                    ├─► unknown                     (no answer in time)
+ *                    └─► interrupted                 (nothing decided: send again, same id)
  *
  * (Drafting happens before there is an intent at all: that's the form's state.)
  */
@@ -48,7 +48,11 @@ export type IntentState =
   | { readonly status: 'received'; readonly receivedAt: number }
   | { readonly status: 'done'; readonly doneAt: number }
   | { readonly status: 'needs-attention'; readonly failure: Failure }
-  | { readonly status: 'failed-to-send'; readonly failure: Failure };
+  /**
+   * Nothing was decided and nothing is in flight: no response, a 5xx, or a 401. Not
+   * final. It goes again with the same id (PROTOCOL: Remedies).
+   */
+  | { readonly status: 'interrupted'; readonly failure: Failure };
 
 export type IntentStatus = IntentState['status'];
 

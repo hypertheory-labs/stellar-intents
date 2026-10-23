@@ -157,6 +157,26 @@ describe('durability (PROTOCOL: Durability, proposed)', () => {
   });
 });
 
+describe('restored interrupted intents', () => {
+  it('are asked about, but never resent without the person', async () => {
+    const storage = memoryIntentStorage();
+    const yesterday = {
+      ...stored('a', { status: 'interrupted', failure: { remedy: 'try-again' } }),
+    };
+    await storage.save('P1', yesterday);
+    const { store, http } = setup(storage);
+
+    await store.restore('P1');
+    http.expectOne('/holds/a').flush(null, { status: 404, statusText: 'Not Found' });
+
+    store.resendInterrupted(); // what the stream does on subscribed
+    http.expectNone('/holds/a');
+
+    store.resend('a'); // the person said "try again"
+    expect(http.expectOne('/holds/a').request.method).toBe('PUT');
+  });
+});
+
 describe('provideIntentStorage', () => {
   function boot(storage: IntentStorage) {
     TestBed.configureTestingModule({

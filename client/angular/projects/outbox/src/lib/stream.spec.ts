@@ -109,6 +109,24 @@ describe('the event stream (PROTOCOL §3)', () => {
     expect(ctx.seen.map((e) => e.type)).toEqual(['[Server] subscribed']);
   });
 
+  it("on subscribed, this page's interrupted intents go again with the same id", () => {
+    const ctx = setup();
+    const intent = ctx.store.enqueue(placeHold, { title: 'Dune' });
+    ctx.http.expectOne(`/holds/${intent.id}`).error(new ProgressEvent('error'));
+
+    ctx.latest().emit('subscribed');
+
+    const requests = ctx.http.match(`/holds/${intent.id}`);
+    expect(requests.map((r) => r.request.method).sort()).toEqual(['GET', 'PUT']);
+    requests
+      .find((r) => r.request.method === 'PUT')!
+      .flush(null, {
+        status: 202,
+        statusText: 'Accepted',
+      });
+    expect(statusOf(ctx.store, intent.id)).toBe('received');
+  });
+
   it('intent-decided settles the intent, with the detail for the apology', () => {
     const ctx = setup();
     const placed = received(ctx);

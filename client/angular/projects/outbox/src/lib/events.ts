@@ -16,7 +16,7 @@ export const outboxEvents = eventGroup({
     intentDone: type<{ intent: Intent }>(),
     intentUnknown: type<{ intent: Intent }>(),
     intentNeedsAttention: type<{ intent: Intent }>(),
-    intentFailedToSend: type<{ intent: Intent }>(),
+    intentInterrupted: type<{ intent: Intent }>(),
     /** Promotion: the feature's memory has the real item, so the guess is gone. */
     intentRetired: type<{ intent: Intent }>(),
     /** The user dismissed the intent (usually its apology). */

@@ -101,29 +101,63 @@ describe('OutboxStore', () => {
     ]);
   });
 
-  it('a network error is failed-to-send, and the remedy is to try again', () => {
+  it('a network error interrupts the intent, and the remedy is to try again', () => {
     const { store, http } = setup();
     const intent = store.enqueue(placeHold, dune);
     http.expectOne(`/holds/${intent.id}`).error(new ProgressEvent('error'));
 
-    expect(statusOf(store, intent.id)).toBe('failed-to-send');
+    expect(statusOf(store, intent.id)).toBe('interrupted');
     expect(store.apologies()[0].remedy).toBe('try-again');
   });
 
-  // Sorted by what the person can do next, not by what went wrong underneath.
+  // Sorted by what the person can do next. Only a decision (a 4xx other than 401) is final.
   it.each([
-    [409, 'no'],
-    [422, 'no'],
-    [403, 'no'],
-    [401, 'sign-in'],
-    [500, 'try-again'],
-    [503, 'try-again'],
-  ] as const)('a %i is remedied by %s', (status, remedy) => {
+    [409, 'needs-attention', 'no'],
+    [422, 'needs-attention', 'no'],
+    [403, 'needs-attention', 'no'],
+    [401, 'interrupted', 'sign-in'],
+    [500, 'interrupted', 'try-again'],
+    [503, 'interrupted', 'try-again'],
+  ] as const)('a %i is %s, remedied by %s', (status, state, remedy) => {
     const { store, http } = setup();
     const intent = store.enqueue(placeHold, dune);
     http.expectOne(`/holds/${intent.id}`).flush(null, { status, statusText: 'Error' });
 
+    expect(statusOf(store, intent.id)).toBe(state);
     expect(store.apologies()[0].remedy).toBe(remedy);
+  });
+
+  it('an interrupted intent goes again with the same id, and keeps its guess meanwhile', () => {
+    const { store, http } = setup();
+    const intent = store.enqueue(placeHold, dune);
+    http.expectOne(`/holds/${intent.id}`).flush(null, { status: 503, statusText: 'Unavailable' });
+    expect(store.candidates(placeHold).map((c) => c.intentId)).toEqual([intent.id]);
+
+    store.resend(intent.id);
+    const again = http.expectOne(`/holds/${intent.id}`);
+    expect(again.request.method).toBe('PUT');
+    expect(again.request.headers.get('Idempotency-Key')).toBe(intent.id);
+    again.flush(null, { status: 202, statusText: 'Accepted' });
+
+    expect(statusOf(store, intent.id)).toBe('received');
+  });
+
+  it('an interrupted intent is not final: if it landed after all, a status check settles it', () => {
+    const { store, http } = setup();
+    const intent = store.enqueue(placeHold, dune);
+    http.expectOne(`/holds/${intent.id}`).flush(null, { status: 500, statusText: 'Error' });
+
+    store.resolve(intent.id, { status: 'done' });
+    expect(statusOf(store, intent.id)).toBe('done');
+  });
+
+  it('a decided intent is not resent', () => {
+    const { store, http } = setup();
+    const intent = store.enqueue(placeHold, dune);
+    http.expectOne(`/holds/${intent.id}`).flush(null, { status: 409, statusText: 'Conflict' });
+
+    store.resend(intent.id);
+    http.expectNone(`/holds/${intent.id}`);
   });
 
   it('no answer in time is remedied by waiting', () => {

@@ -76,6 +76,9 @@ interface Row {
             @for (a of outbox.apologies(); track a.intentId) {
               <li class="apology">
                 {{ a.message }}
+                @if (a.remedy === 'try-again') {
+                  <button type="button" (click)="outbox.resend(a.intentId)">Try again</button>
+                }
                 <button type="button" (click)="outbox.dismiss(a.intentId)">Dismiss</button>
               </li>
             }
@@ -219,12 +222,12 @@ export class App {
     () => this.waitList.value()?.filter((h) => h.status === 'placed').length ?? 0,
   );
 
-  /** Intents to cancel that haven't failed: their holds are shown as "cancelling…". */
+  /** Intents to cancel that haven't been decided against: their holds show "cancelling…". */
   private readonly cancelling = computed(() =>
     this.outbox
       .entities()
       .filter((i) => i.type === cancelHold.name)
-      .filter((i) => i.state.status !== 'needs-attention' && i.state.status !== 'failed-to-send')
+      .filter((i) => i.state.status !== 'needs-attention')
       .map((i) => ({ intentId: i.id, holdId: (i.payload as { holdId: string }).holdId })),
   );
 

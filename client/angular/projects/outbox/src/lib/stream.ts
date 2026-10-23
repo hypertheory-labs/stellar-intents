@@ -73,7 +73,8 @@ const DEFAULT_SILENCE_MS = 60_000;
 
 /**
  * Opens the event stream for the app's lifetime (PROTOCOL §3), and:
- * - on `subscribed` (every connect), asks about every waiting intent, and announces it;
+ * - on `subscribed` (every connect), asks about every waiting intent, resends this page's
+ *   interrupted ones, and announces it;
  * - on `intent-decided`, settles the intent;
  * - on `invalidate`, announces the keys (`invalidationEvents`, from the server);
  * - when it drops, asks the session whether we're still signed in, then reconnects with
@@ -139,6 +140,7 @@ function follow({
       attempt = 0;
       connected = true;
       outbox.checkWaiting();
+      outbox.resendInterrupted();
       dispatch.subscribed();
     });
     opened.addEventListener('intent-decided', (event) => {

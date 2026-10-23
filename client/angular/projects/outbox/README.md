@@ -34,27 +34,28 @@ stateDiagram-v2
     sent --> unknown: no answer in timeoutMs
     unknown --> received: late 202
     unknown --> done: late 2xx
-    sent --> needs_attention: 4xx / 5xx
-    sent --> failed_to_send: status 0 (never left)
-    received --> done: resolve(done)
-    received --> needs_attention: resolve(needs-attention)
+    sent --> needs_attention: 4xx (not 401)
+    sent --> interrupted: no response, 5xx, 401
+    interrupted --> sent: resend(), same id
+    received --> done: settle(done)
+    received --> needs_attention: settle(needs-attention)
     done --> [*]: retire()
     needs_attention --> [*]: dismiss()
-    failed_to_send --> [*]: dismiss()
+    interrupted --> [*]: dismiss()
 ```
 
-| State             | What's true                                                              | Receipt | Candidate          | Remedy    |
-| ----------------- | ------------------------------------------------------------------------ | ------- | ------------------ | --------- |
-| `requested`       | It's held here. Nothing has left.                                        | yes     | yes                |           |
-| `sent`            | It left. We don't know if it arrived.                                    | yes     | yes                |           |
-| `unknown`         | No answer in time. It **may have landed**. Not a failure.                | yes     | yes                | wait      |
-| `received`        | The server has it (202). The outcome is later. **Received is not done.** | yes     | yes                |           |
-| `done`            | The outcome is known and good.                                           | yes     | yes, until retired |           |
-| `needs-attention` | The outcome is known and bad.                                            | yes     | no                 | no \*     |
-| `failed-to-send`  | As far as we can tell, it never reached the server.                      | yes     | no                 | try-again |
+| State             | What's true                                                              | Receipt | Candidate          | Remedy       |
+| ----------------- | ------------------------------------------------------------------------ | ------- | ------------------ | ------------ |
+| `requested`       | It's held here. Nothing has left.                                        | yes     | yes                |              |
+| `sent`            | It left. We don't know if it arrived.                                    | yes     | yes                |              |
+| `unknown`         | No answer in time. It **may have landed**. Not a failure.                | yes     | yes                | wait         |
+| `received`        | The server has it (202). The outcome is later. **Received is not done.** | yes     | yes                |              |
+| `done`            | The outcome is known and good.                                           | yes     | yes, until retired |              |
+| `needs-attention` | The outcome is known and bad.                                            | yes     | no                 | no           |
+| `interrupted`     | Nothing was decided, nothing is in flight. It may have landed.           | yes     | yes                | try-again \* |
 
-\* Or `sign-in` (a `401`), or `try-again` (a `5xx`). Apologies are sorted by what the
-person can do next: see PROTOCOL's Remedies.
+\* Or `sign-in`, for a `401`. Apologies are sorted by what the person can do next: see
+PROTOCOL's Remedies.
 
 **A decision is final.** `done` and `needs-attention` never move again, except out
 (retire, dismiss). Answers can arrive in any order (the PUT's own answer, a status
@@ -275,29 +276,32 @@ intents are sent but not stored. For tests, pass `storage: memoryIntentStorage()
 | `resolve(id, outcome)`      | Records an outcome learned some other way. Ignored for unknown ids and decided intents.            |
 | `settle(id, outcome)`       | The same, from an `Outcome` (`done`, or `needs-attention` with a `detail`), as the stream says it. |
 | `checkStatus(id)`           | Asks the type's `status.url`; settles if the answer is decided. A 404 is "not recorded yet".       |
-| `checkWaiting()`            | `checkStatus` for every `received` and `unknown` intent.                                           |
+| `checkWaiting()`            | `checkStatus` for every `received`, `unknown`, and `interrupted` intent.                           |
+| `resend(id)`                | Sends an `interrupted` intent again, same id. Anything else is ignored.                            |
+| `resendInterrupted()`       | `resend` for every interrupted intent asked on this page (not restored ones). The stream calls it. |
 | `retire(id)`                | Promotion: removes the intent, publishes `intentRetired`.                                          |
 | `dismiss(id)`               | The user let it go: removes the intent, publishes `intentDismissed`.                               |
 | `entities()`, `entityMap()` | Every intent still held (from `withEntities`).                                                     |
 | `receipts()`                | `{ intentId, status, text }` for every intent held. Always true.                                   |
-| `apologies()`               | `{ intentId, status, message, actions }` for `unknown`, `needs-attention`, and `failed-to-send`.   |
-| `candidates(type)`          | `Candidate<T>[]` for that type, except failed ones.                                                |
+| `apologies()`               | `{ intentId, status, remedy, message, actions }` for `unknown`, `needs-attention`, `interrupted`.  |
+| `candidates(type)`          | `Candidate<T>[]` for that type, except ones decided against.                                       |
 
 ### Sending
 
 - One `HttpClient.request` per intent, with `Idempotency-Key: {intent.id}` and the
   type's method, url, and body. (Only `POST`, `PUT`, `PATCH`, `DELETE`.)
 - **202** → `received`. **Any other 2xx** → `done`.
-- **Status 0** → `failed-to-send` (remedy `try-again`). **Any other error** →
-  `needs-attention`, with the HTTP status and a problem+json `detail` if the body has one.
-  Its remedy is `sign-in` for a `401`, `try-again` for a `5xx`, and `no` otherwise.
+- **No response, a `5xx`, or a `401`** → `interrupted`: nothing was decided. Remedy
+  `try-again` (or `sign-in` for the `401`). It goes again with the **same** id.
+- **Any other error** → `needs-attention`, remedy `no`, with the HTTP status and a
+  problem+json `detail` if the body has one.
 - **No answer in `timeoutMs`** → `unknown`. The request is **not** cancelled: a late
   answer still lands, unless the intent was decided some other way meanwhile.
 
 ### Events (`outboxEvents`, source `Outbox`)
 
 `[Outbox] intentRequested`, `intentSent`, `intentReceived`, `intentDone`,
-`intentUnknown`, `intentNeedsAttention`, `intentFailedToSend`, `intentRetired`,
+`intentUnknown`, `intentNeedsAttention`, `intentInterrupted`, `intentRetired`,
 `intentDismissed`. Each carries `{ intent }`.
 
 ### Promotion helpers

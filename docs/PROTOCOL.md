@@ -45,12 +45,14 @@ stateDiagram-v2
     requested --> sent: sent at once
     sent --> received: 202
     sent --> done: other 2xx
-    sent --> needs_attention: 4xx / 5xx
-    sent --> failed_to_send: no response
+    sent --> needs_attention: 4xx (not 401)
+    sent --> interrupted: no response, 5xx, 401
     sent --> unknown: no answer in time
     unknown --> received: late 202
     unknown --> done: late 2xx, or an outcome
-    unknown --> needs_attention: late error, or an outcome
+    unknown --> needs_attention: late 4xx, or an outcome
+    interrupted --> sent: sent again, same id
+    interrupted --> done: it landed after all (status check)
     received --> done: outcome
     received --> needs_attention: outcome
 ```
@@ -62,17 +64,17 @@ stateDiagram-v2
 | `unknown`         | No answer in time. It **may have landed**. Not a failure.       | yes                | `wait`           |
 | `received`        | The server has it (`202`). **Received is not done.**            | yes                |                  |
 | `done`            | The outcome is known and good.                                  | yes, until retired |                  |
-| `needs-attention` | The outcome is known and bad.                                   | no                 | `no` \*          |
-| `failed-to-send`  | As far as we can tell, it never reached the server.             | no                 | `try-again`      |
+| `needs-attention` | The outcome is known and bad.                                   | no                 | `no`             |
+| `interrupted`     | Nothing was decided and nothing is in flight. It may have landed. | yes                | `try-again`, or `sign-in` (a `401`) |
 
-Every state has a receipt. \* Or `sign-in` (a `401`), or `try-again` (a `5xx`).
+Every state has a receipt.
 
 - **A decision is final.** `done` and `needs-attention` never change again; the intent
   only leaves (retired once memory has it, or dismissed). Answers arrive in any order, and
   a late one must not undo what's known.
-- **Open:** a `5xx` or a `401` isn't a decision, yet it lands in `needs-attention`. The
-  likely fix is a state that isn't final and resends with the same id. See
-  [Remedies](#remedies).
+- **Only a decision is final.** A `5xx`, a `401`, or no response isn't a decision, so it
+  lands in `interrupted`, which goes again with the **same id**. A new id would be a new
+  request, and a duplicate if the first one landed after the server committed.
 
 ---
 
@@ -137,9 +139,10 @@ Content-Type: application/json
 | ----------------------------- | --------------------------------------------------------------------------- | ----------------------------------------------- |
 | `202 Accepted`                | Recorded. The outcome comes later.                                          | `received`                                      |
 | any other `2xx`               | Done, and the outcome is good.                                              | `done`                                          |
-| `4xx`                         | Rejected. Body is `application/problem+json`.                               | `needs-attention` (with the problem's `detail`) |
-| `5xx`                         | The server failed. **It didn't decide** (see [Remedies](#remedies)).         | `needs-attention`, for now                      |
-| no response (status 0)        | As far as the client can tell, it never reached the server.                 | `failed-to-send`                                |
+| `4xx` (not `401`)             | Rejected: a decision. Body is `application/problem+json`.                   | `needs-attention` (with the problem's `detail`) |
+| `401`                         | Not signed in. Nothing was decided.                                         | `interrupted` (remedy `sign-in`)                |
+| `5xx`                         | The server failed. **Nothing was decided**, as far as the client knows.     | `interrupted` (remedy `try-again`)              |
+| no response (status 0)        | It may or may not have reached the server.                                  | `interrupted` (remedy `try-again`)              |
 | no answer within the timeout  | **Not a failure.** It may have landed. The request is not cancelled.        | `unknown`, until a late answer or an outcome    |
 
 What the client then tells the person is sorted by remedy; see [Remedies](#remedies).
@@ -348,10 +351,10 @@ can:
 
 | Remedy      | When                                                                  |
 | ----------- | --------------------------------------------------------------------- |
-| `try-again` | No response (`failed-to-send`), or a `5xx`: the server failed.        |
-| `wait`      | No answer in time (`unknown`). It may have landed.                    |
+| `try-again` | No response, or a `5xx` (`interrupted`). Same id.                     |
+| `wait`      | No answer in time (`unknown`). It may have landed. Same id.           |
 | `no`        | Any other `4xx`, or a decision against. Why is the problem's `detail`. |
-| `sign-in`   | `401`: the session has ended.                                         |
+| `sign-in`   | `401` (`interrupted`): the session has ended. Same id, once signed in. |
 
 Today a status code is enough to choose one. A remedy that needs more (below) will be a
 problem+json `type`: the countable part, for a machine. `detail` stays the part for a
@@ -365,11 +368,21 @@ person.
   business's policy, never the protocol's.
 - `still-want-it`: a stored intent too old to send ([Durability](#durability-proposed)).
 
-**Open:** a `5xx` or a `401` means the server *didn't decide*, yet the intent goes to
-`needs-attention`, which is final. So "try again" today means a new intent with a new id,
-and if the `5xx` came after the server committed, that's a duplicate. Either these
-should move to a state that isn't final and resend with the same id, or a `5xx` from a
-command must promise nothing was recorded.
+**Who acts on a remedy.** A client **MAY** act on a same-id remedy by itself:
+`try-again` when the server is reachable again (the reference: on `subscribed`), `wait`
+through status checks. It **MUST NOT** do so for an intent restored from storage, because
+that request may no longer mean what the person meant. That one waits for the person.
+
+**[Proposed]** The principle behind it, and what follows:
+
+> The client may deliver what the person asked for, as many times as it takes, while it
+> still means what they meant. It may never ask for something new on their behalf.
+
+- Every remedy that needs a **new** id (`no`, `look-again`) needs the person, because a
+  new id is a new request.
+- While a remedy is being handled automatically, there's nothing to apologise for yet:
+  "we'll keep trying" is a receipt. It becomes an apology when the automation gives up,
+  or when it's the person's turn. (The reference still shows these as apologies.)
 
 ### Durability [Proposed]
 
@@ -428,9 +441,11 @@ implementation can be checked without reading the reference code.
    `sent`.
 2. `202` → `received`. `201`/`200`/`204` → `done`.
 3. `409` with problem+json `detail: "X"` → `needs-attention`, remedy `no`, and the apology
-   can say "X". A `401` → remedy `sign-in`.
-4. `500` with an HTML body → `needs-attention`, remedy `try-again`, no `detail`, no crash.
-5. Network failure (status 0) → `failed-to-send`, remedy `try-again`.
+   can say "X". A `401` → `interrupted`, remedy `sign-in`.
+4. `500` with an HTML body → `interrupted`, remedy `try-again`, no `detail`, no crash.
+5. Network failure (status 0) → `interrupted`, remedy `try-again`. When the server is
+   reachable again, it's sent with the **same** id, and the server ends up with one
+   resource.
 6. No answer within the timeout → `unknown`, remedy `wait`; then a late `202` →
    `received`; a late `200` → `done`.
 7. *(server)* Same id, same body, twice → same answer both times, one resource. Same id,
@@ -460,7 +475,8 @@ implementation can be checked without reading the reference code.
 
 16. A candidate shows, marked as a guess, until memory contains its id; then only the real
     item shows (never both, never neither).
-17. A `needs-attention` or `failed-to-send` intent shows no candidate, and shows its apology.
+17. A `needs-attention` intent shows no candidate, and shows its apology. An `interrupted`
+    one keeps its candidate: nothing has been decided.
 18. A `done` intent whose id is in memory is retired.
 
 **Durability [Proposed]** (19 and 21 are implemented; 20, 22 and 23 aren't built)

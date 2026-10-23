@@ -1,9 +1,16 @@
 import { HttpClient, HttpErrorResponse, HttpResponse } from '@angular/common/http';
 import { computed, inject } from '@angular/core';
 import { patchState, signalStore, withComputed, withMethods, withProps } from '@ngrx/signals';
-import { addEntity, removeEntity, updateEntity, withEntities } from '@ngrx/signals/entities';
+import {
+  addEntities,
+  addEntity,
+  removeEntity,
+  updateEntity,
+  withEntities,
+} from '@ngrx/signals/entities';
 import { injectDispatch } from '@ngrx/signals/events';
 import { outboxEvents } from './events';
+import { INTENT_STORAGE } from './intent-storage';
 import { invalidationEvents } from './invalidation';
 import { AnyIntentType, INTENT_TYPES } from './registry';
 import {
@@ -36,10 +43,11 @@ export interface ApologyNotice {
 }
 
 /**
- * Phase 1: in memory. Holds intents, sends them, and walks each through its
- * lifecycle, publishing an event at every step. It owns the guesses, never the
- * app's data: features read receipts, candidates, and apologies from here, and
- * their own data from their own resources.
+ * Holds intents (in memory, and across page loads if there's storage: see
+ * provideIntentStorage), sends them, and walks each through its lifecycle,
+ * publishing an event at every step. It owns the guesses, never the app's data:
+ * features read receipts, candidates, and apologies from here, and their own data
+ * from their own resources.
  */
 export const OutboxStore = signalStore(
   { providedIn: 'root' },
@@ -52,6 +60,9 @@ export const OutboxStore = signalStore(
     _http: inject(HttpClient),
     _dispatch: injectDispatch(outboxEvents),
     _invalidate: injectDispatch(invalidationEvents),
+    _storage: inject(INTENT_STORAGE, { optional: true }),
+    /** Whose intents these are, once the session has said (see provideIntentStorage). */
+    _owner: { id: undefined as string | undefined },
   })),
   withComputed((store) => {
     const typeOf = (intent: Intent) => store._types.get(intent.type)!;
@@ -97,6 +108,17 @@ export const OutboxStore = signalStore(
       return store.entityMap()[id];
     }
 
+    /** Write it down, if there's storage and we know whose it is. Resolves once written. */
+    function persist(intent: Intent | undefined): Promise<void> {
+      const owner = store._owner.id;
+      if (!intent || !owner || !store._storage) return Promise.resolve();
+      return store._storage.save(owner, intent).catch(() => undefined);
+    }
+
+    function forget(id: string) {
+      store._storage?.remove(id).catch(() => undefined);
+    }
+
     function moveTo(id: string, state: IntentState) {
       const now = current(id);
       if (!now) return; // retired or dismissed while in flight: nothing to update
@@ -104,6 +126,7 @@ export const OutboxStore = signalStore(
       // or a server event already said "done"), and a late one must not undo what's known.
       if (now.state.status === 'done' || now.state.status === 'needs-attention') return;
       patchState(store, updateEntity({ id, changes: { state } }));
+      void persist(current(id));
       transitionEvents[state.status]({ intent: current(id) });
       if (serverRecorded(now.state, state)) announceInvalidation(current(id));
     }
@@ -142,6 +165,13 @@ export const OutboxStore = signalStore(
         // other failure is just a check that didn't work. Either way, ask again later.
         error: () => undefined,
       });
+    }
+
+    function checkWaiting() {
+      store
+        .entities()
+        .filter((i) => i.state.status === 'received' || i.state.status === 'unknown')
+        .forEach((i) => checkStatus(i.id));
     }
 
     function send(intent: Intent, type: AnyIntentType) {
@@ -203,7 +233,15 @@ export const OutboxStore = signalStore(
         // the store holds every type's intents; it never reads the payload
         patchState(store, addEntity(intent as Intent));
         store._dispatch.intentRequested({ intent });
-        send(intent, registered as AnyIntentType);
+        // PROTOCOL (Durability): stored before it's sent, or a tab closed mid-send leaves
+        // nothing to ask about. Without storage, it goes at once.
+        if (store._storage && store._owner.id) {
+          void persist(intent as Intent).then(() =>
+            send(intent as Intent, registered as AnyIntentType),
+          );
+        } else {
+          send(intent as Intent, registered as AnyIntentType);
+        }
         return intent;
       },
 
@@ -242,11 +280,23 @@ export const OutboxStore = signalStore(
        * `unknown` (no answer in time; it may have landed). The floor: on page-visible, and
        * on every (re)connect of the event stream.
        */
-      checkWaiting() {
-        store
-          .entities()
-          .filter((i) => i.state.status === 'received' || i.state.status === 'unknown')
-          .forEach((i) => checkStatus(i.id));
+      checkWaiting,
+
+      /**
+       * Whose intents these are, from now on (the session said). Puts that user's stored
+       * intents back, and asks about the ones still waiting. Nothing is resent: a request
+       * from a page that's gone is `unknown` until a status check or the server says.
+       */
+      async restore(owner: string) {
+        store._owner.id = owner;
+        const stored = (await store._storage?.load(owner)) ?? [];
+        const restored = stored
+          // already here (this page enqueued it), or of a type this build doesn't know
+          .filter((intent) => !current(intent.id) && store._types.has(intent.type))
+          .map((intent) => ({ ...intent, state: resumed(intent.state) }));
+        patchState(store, addEntities(restored));
+        restored.forEach((intent) => void persist(intent));
+        checkWaiting();
       },
 
       /** Promotion: the feature's memory now contains the real item. */
@@ -254,6 +304,7 @@ export const OutboxStore = signalStore(
         const intent = current(id);
         if (!intent) return;
         patchState(store, removeEntity(id));
+        forget(id);
         store._dispatch.intentRetired({ intent });
       },
 
@@ -262,6 +313,7 @@ export const OutboxStore = signalStore(
         const intent = current(id);
         if (!intent) return;
         patchState(store, removeEntity(id));
+        forget(id);
         store._dispatch.intentDismissed({ intent });
       },
     };
@@ -294,6 +346,21 @@ function serverRecorded(from: IntentState, to: IntentState) {
       return from.status === 'received' || from.status === 'unknown';
     default:
       return false;
+  }
+}
+
+/**
+ * An intent read back from storage. Nothing from the page that stored it is in flight any
+ * more: if it was sent (or about to be) without an answer, we don't know whether it landed.
+ */
+function resumed(state: IntentState): IntentState {
+  switch (state.status) {
+    case 'requested':
+      return { status: 'unknown', sentAt: Date.now() };
+    case 'sent':
+      return { status: 'unknown', sentAt: state.sentAt };
+    default:
+      return state;
   }
 }
 

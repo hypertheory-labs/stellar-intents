@@ -21,3 +21,7 @@ export {
   serverEvents,
 } from './lib/stream';
 export type { EventSourceLike, OutboxStreamOptions } from './lib/stream';
+export { provideIntentStorage } from './lib/durability';
+export type { IntentStorageOptions } from './lib/durability';
+export { INTENT_STORAGE, indexedDbIntentStorage, memoryIntentStorage } from './lib/intent-storage';
+export type { IntentStorage } from './lib/intent-storage';

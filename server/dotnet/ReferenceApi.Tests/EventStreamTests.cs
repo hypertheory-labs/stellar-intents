@@ -50,6 +50,31 @@ public class EventStreamTests(AppFixture app)
         decided.GetProperty("outcome").GetString().ShouldBe("done");
     }
 
+    [Fact] // docs/intents/holds.md: a cancel that overtakes the placement
+    public async Task a_hold_cancelled_before_its_decision_still_gets_an_outcome()
+    {
+        var patron = HoldsApi.NewPatron();
+        var cookie = await _host.SignIn(patron);
+        await using var stream = await EventStream.Open(_host, cookie);
+        await stream.NextOf("subscribed");
+
+        var id = Guid.NewGuid();
+        await _host.PlaceHold(patron, id, new PlaceHold(1001, "CEN"), 202);
+        await _host.Scenario(s =>
+        {
+            s.Delete.Url($"/holds/{id}");
+            s.WithRequestHeader("Idempotency-Key", Guid.NewGuid().ToString());
+            s.WithRequestHeader("Cookie", cookie);
+            s.StatusCodeShouldBe(204);
+        });
+        await _host.Decide(id);
+
+        var decided = await stream.NextOf("intent-decided");
+        decided.GetProperty("intentId").GetGuid().ShouldBe(id);
+        decided.GetProperty("outcome").GetString().ShouldBe("needs-attention");
+        decided.GetProperty("detail").GetString().ShouldBe(EvaluateHoldHandler.CancelledFirst);
+    }
+
     [Fact]
     public async Task a_rejected_hold_is_needs_attention_with_the_reason()
     {

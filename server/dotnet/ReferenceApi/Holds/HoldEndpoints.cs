@@ -144,6 +144,8 @@ public static class EvaluateHoldHandler
     /// <summary>The library's rule, deliberately simple: at most this many active holds per patron.</summary>
     public const int HoldLimit = 3;
 
+    public const string CancelledFirst = "You cancelled this request before it was decided.";
+
     // Returns protocol messages (the decision, and which reads changed) as cascading
     // messages: Wolverine sends them only after this handler's transaction (the decision
     // event) commits. See Streaming/ProtocolMessages.cs for where they go.
@@ -151,7 +153,18 @@ public static class EvaluateHoldHandler
     {
         var messages = new OutgoingMessages();
         var hold = await session.Events.FetchLatest<Hold>(command.HoldId);
-        if (hold is null || hold.Status != HoldStatus.Requested) return messages; // already decided (redelivery), or cancelled
+        if (hold is null || hold.Status is HoldStatus.Placed or HoldStatus.Rejected) return messages; // already decided (redelivery)
+
+        // The patron cancelled it before it was decided. The place-hold intent still needs an
+        // outcome, or the client waits for one forever (found by writing both intents in IRMTO
+        // form: docs/intents/holds.md).
+        // FOR NOW: needs-attention. PROTOCOL proposes a final outcome named for how it ended
+        // ("withdrawn"), and that name isn't chosen yet.
+        if (hold.Status == HoldStatus.Cancelled)
+        {
+            messages.Add(new IntentDecided(hold.PatronId, hold.Id, IntentOutcome.NeedsAttention, CancelledFirst));
+            return messages;
+        }
 
         var activeOthers = await session.Query<Hold>()
             .Where(h => h.PatronId == hold.PatronId && h.Id != hold.Id && h.Status == HoldStatus.Placed)

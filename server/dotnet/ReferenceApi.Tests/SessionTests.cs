@@ -46,9 +46,11 @@ public class SessionTests(AppFixture app)
     [Fact] // the CSRF defence: an unsafe request must carry its Idempotency-Key
     public async Task a_command_without_an_idempotency_key_is_turned_away()
     {
+        var cookie = await _host.SignIn(HoldsApi.NewPatron());
         var result = await _host.Scenario(s =>
         {
-            s.Put.Json(new PlaceHold(HoldsApi.NewPatron(), 1001, "CEN")).ToUrl($"/holds/{Guid.NewGuid()}");
+            s.Put.Json(new PlaceHold(1001, "CEN")).ToUrl($"/holds/{Guid.NewGuid()}");
+            s.WithRequestHeader("Cookie", cookie);
             s.StatusCodeShouldBe(400);
         });
         result.Context.Response.ContentType.ShouldBe("application/problem+json");

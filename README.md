@@ -38,7 +38,7 @@ dotnet run --project server/dotnet/ReferenceApi
 
 It keeps its data in a local SQLite file (`app.db`), created and seeded on first run. In
 Development, `POST /dev/reset` starts the data over, and `POST /dev/sign-in?patronId=P0042`
-gives you a session (the event stream needs one):
+gives you a session (commands and the event stream need one):
 
 ```bash
 curl -c jar -X POST "http://localhost:5261/dev/sign-in?patronId=P0042"

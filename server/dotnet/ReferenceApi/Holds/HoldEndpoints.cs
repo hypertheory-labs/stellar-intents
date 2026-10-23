@@ -1,5 +1,8 @@
+using System.Security.Claims;
 using Fisher;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using ReferenceApi.Session;
 using ReferenceApi.Streaming;
 using JasperFx.Events.Documents;
 using Wolverine;
@@ -7,8 +10,11 @@ using Wolverine.Http;
 
 namespace ReferenceApi.Holds;
 
-/// <summary>The body of PUT /holds/{id}. The id is the client's: it is also the idempotency key.</summary>
-public record PlaceHold(string PatronId, int TitleId, string BranchCode);
+/// <summary>
+/// The body of PUT /holds/{id}. The id is the client's: it is also the idempotency key.
+/// Whose hold it is comes from the session, never the body (PROTOCOL §0).
+/// </summary>
+public record PlaceHold(int TitleId, string BranchCode);
 
 /// <summary>Sent (scheduled) when a hold is requested; decides it.</summary>
 public record EvaluateHold(Guid HoldId);
@@ -19,8 +25,9 @@ public static class HoldEndpoints
     /// <summary>
     /// Request a hold under a client-generated id. Safe to repeat: the same id and body
     /// return the hold as it is now (202 while requested, 200 once decided); the same id
-    /// with a different body is a 409.
+    /// with a different body (or by a different patron) is a 409. 401 without a session.
     /// </summary>
+    [Authorize]
     [WolverinePut("/holds/{id}")]
     [ProducesResponseType<Hold>(StatusCodes.Status202Accepted)]
     [ProducesResponseType<Hold>(StatusCodes.Status200OK)]
@@ -28,15 +35,17 @@ public static class HoldEndpoints
     public static async Task<IResult> Put(
         Guid id,
         PlaceHold request,
+        ClaimsPrincipal user,
         IDocumentSession session,
         IMessageBus bus,
         IConfiguration config,
         HttpResponse response)
     {
+        var patronId = user.PatronId()!;
         var existing = await session.Events.FetchLatest<Hold>(id);
         if (existing is not null)
         {
-            var same = existing.PatronId == request.PatronId
+            var same = existing.PatronId == patronId
                        && existing.TitleId == request.TitleId
                        && existing.BranchCode == request.BranchCode;
             if (!same)
@@ -50,7 +59,7 @@ public static class HoldEndpoints
                 : Results.Ok(existing);
         }
 
-        var requested = new HoldRequested(id, request.PatronId, request.TitleId, request.BranchCode, DateTimeOffset.UtcNow);
+        var requested = new HoldRequested(id, patronId, request.TitleId, request.BranchCode, DateTimeOffset.UtcNow);
         session.Events.StartStream<Hold>(id, requested);
 
         // Enlisted in the same transaction as the event (Wolverine's outbox): the hold can't
@@ -82,16 +91,26 @@ public static class HoldEndpoints
     /// <summary>
     /// Cancel a hold, requested or placed. Safe to repeat: cancelling a cancelled hold is
     /// still a 204. A rejected hold was never placed, so there's nothing to cancel (409).
-    /// To confirm, GET /holds/{id}: its status is "cancelled".
+    /// To confirm, GET /holds/{id}: its status is "cancelled". Only the hold's own patron
+    /// can cancel it (403 for anyone else); 401 without a session.
     /// </summary>
+    [Authorize]
     [WolverineDelete("/holds/{id}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
-    public static async Task<IResult> Cancel(Guid id, IDocumentSession session, IMessageBus bus)
+    public static async Task<IResult> Cancel(Guid id, ClaimsPrincipal user, IDocumentSession session, IMessageBus bus)
     {
         var hold = await session.Events.FetchLatest<Hold>(id);
         if (hold is null) return Results.NotFound();
+        // WHY 403 and not 404: a 404 says "no such hold", which isn't true, and a client
+        // could wait for it to appear. The id is a random UUID, so saying it exists gives
+        // little away.
+        if (hold.PatronId != user.PatronId())
+            return Results.Problem(
+                detail: "This hold belongs to someone else.",
+                statusCode: StatusCodes.Status403Forbidden);
         if (hold.Status == HoldStatus.Cancelled) return Results.NoContent();
         if (hold.Status == HoldStatus.Rejected)
             return Results.Problem(

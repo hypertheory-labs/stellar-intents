@@ -12,7 +12,7 @@ public class CommandTests(AppFixture app)
     public async Task a_new_command_is_accepted_with_where_to_check_and_a_version()
     {
         var id = Guid.NewGuid();
-        var result = await _host.PlaceHold(id, new PlaceHold(HoldsApi.NewPatron(), 1001, "CEN"), 202);
+        var result = await _host.PlaceHold(HoldsApi.NewPatron(), id, new PlaceHold(1001, "CEN"), 202);
 
         result.Context.Response.Headers.Location.ToString().ShouldBe($"/holds/{id}");
         result.Context.Response.Headers.ETag.ToString().ShouldBe("\"1\"");
@@ -23,11 +23,12 @@ public class CommandTests(AppFixture app)
     public async Task a_repeat_while_pending_is_202_again()
     {
         var id = Guid.NewGuid();
-        var body = new PlaceHold(HoldsApi.NewPatron(), 1001, "CEN");
-        await _host.PlaceHold(id, body, 202);
-        await _host.PlaceHold(id, body, 202);
+        var patron = HoldsApi.NewPatron();
+        var body = new PlaceHold(1001, "CEN");
+        await _host.PlaceHold(patron, id, body, 202);
+        await _host.PlaceHold(patron, id, body, 202);
 
-        var holds = await _host.GetAsJson<Hold[]>($"/holds?patronId={body.PatronId}");
+        var holds = await _host.GetAsJson<Hold[]>($"/holds?patronId={patron}");
         holds!.Length.ShouldBe(1);
     }
 
@@ -35,11 +36,12 @@ public class CommandTests(AppFixture app)
     public async Task a_repeat_after_the_decision_is_200()
     {
         var id = Guid.NewGuid();
-        var body = new PlaceHold(HoldsApi.NewPatron(), 1001, "CEN");
-        await _host.PlaceHold(id, body, 202);
+        var patron = HoldsApi.NewPatron();
+        var body = new PlaceHold(1001, "CEN");
+        await _host.PlaceHold(patron, id, body, 202);
         await _host.Decide(id);
 
-        var result = await _host.PlaceHold(id, body, 200);
+        var result = await _host.PlaceHold(patron, id, body, 200);
         (await result.ReadAsJsonAsync<Hold>())!.Status.ShouldBe(HoldStatus.Placed);
     }
 
@@ -48,10 +50,61 @@ public class CommandTests(AppFixture app)
     {
         var id = Guid.NewGuid();
         var patron = HoldsApi.NewPatron();
-        await _host.PlaceHold(id, new PlaceHold(patron, 1001, "CEN"), 202);
+        await _host.PlaceHold(patron, id, new PlaceHold(1001, "CEN"), 202);
 
-        var result = await _host.PlaceHold(id, new PlaceHold(patron, 1006, "CEN"), 409);
+        var result = await _host.PlaceHold(patron, id, new PlaceHold(1006, "CEN"), 409);
         result.Context.Response.ContentType.ShouldBe("application/problem+json");
+    }
+
+    [Fact] // §0: whose hold it is comes from the session
+    public async Task the_hold_belongs_to_whoever_is_signed_in()
+    {
+        var id = Guid.NewGuid();
+        var patron = HoldsApi.NewPatron();
+        var result = await _host.PlaceHold(patron, id, new PlaceHold(1001, "CEN"), 202);
+
+        (await result.ReadAsJsonAsync<Hold>())!.PatronId.ShouldBe(patron);
+    }
+
+    [Fact] // §0: unauthenticated means 401, never a redirect
+    public async Task a_command_without_a_session_is_401()
+    {
+        var id = Guid.NewGuid();
+        await _host.Scenario(s =>
+        {
+            s.Put.Json(new PlaceHold(1001, "CEN")).ToUrl($"/holds/{id}");
+            s.WithRequestHeader("Idempotency-Key", id.ToString());
+            s.StatusCodeShouldBe(401);
+        });
+    }
+
+    [Fact] // conformance 7, across patrons: someone else's id is "a different body"
+    public async Task the_same_id_from_another_patron_is_a_conflict()
+    {
+        var id = Guid.NewGuid();
+        var body = new PlaceHold(1001, "CEN");
+        await _host.PlaceHold(HoldsApi.NewPatron(), id, body, 202);
+
+        await _host.PlaceHold(HoldsApi.NewPatron(), id, body, 409);
+    }
+
+    [Fact]
+    public async Task only_the_holds_patron_can_cancel_it()
+    {
+        var id = Guid.NewGuid();
+        var owner = HoldsApi.NewPatron();
+        await _host.PlaceHold(owner, id, new PlaceHold(1001, "CEN"), 202);
+
+        var someoneElse = await _host.SignIn(HoldsApi.NewPatron());
+        await _host.Scenario(s =>
+        {
+            s.Delete.Url($"/holds/{id}");
+            s.WithRequestHeader("Idempotency-Key", Guid.NewGuid().ToString());
+            s.WithRequestHeader("Cookie", someoneElse);
+            s.StatusCodeShouldBe(403);
+        });
+
+        (await _host.GetAsJson<Hold>($"/holds/{id}"))!.Status.ShouldBe(HoldStatus.Requested);
     }
 
     [Fact] // §2: not recorded yet is a 404, not an outcome
@@ -71,12 +124,12 @@ public class CommandTests(AppFixture app)
         foreach (var title in new[] { 1001, 1005, 1006 })
         {
             var placed = Guid.NewGuid();
-            await _host.PlaceHold(placed, new PlaceHold(patron, title, "CEN"), 202);
+            await _host.PlaceHold(patron, placed, new PlaceHold(title, "CEN"), 202);
             await _host.Decide(placed);
         }
 
         var fourth = Guid.NewGuid();
-        await _host.PlaceHold(fourth, new PlaceHold(patron, 1010, "CEN"), 202);
+        await _host.PlaceHold(patron, fourth, new PlaceHold(1010, "CEN"), 202);
         await _host.Decide(fourth);
 
         var hold = await _host.GetAsJson<Hold>($"/holds/{fourth}");

@@ -72,10 +72,12 @@ PUT /holds/0b6e0c3e-6a5c-4c4e-9f6e-2f0d8f1c7a11 HTTP/1.1
 Idempotency-Key: 0b6e0c3e-6a5c-4c4e-9f6e-2f0d8f1c7a11
 Content-Type: application/json
 
-{ "patronId": "p1", "titleId": 42, "branchCode": "MAIN" }
+{ "titleId": 42, "branchCode": "MAIN" }
 ```
 
 - The client **MUST** send `Idempotency-Key: {intent id}` on every command.
+- A command acts for the session's user (§0). The body never says who; the server
+  answers `401` without a session.
 - When a command creates something, **prefer `PUT` to the resource's own URL with the
   intent id as its id.** Then "has the server's version arrived?" is an exact check: memory
   contains an item with that id. (`POST` with an `Idempotency-Key` is allowed when the

@@ -42,7 +42,7 @@ public class EventStreamTests(AppFixture app)
         await stream.NextOf("subscribed");
 
         var id = Guid.NewGuid();
-        await _host.PlaceHold(id, new PlaceHold(patron, 1001, "CEN"), 202);
+        await _host.PlaceHold(patron, id, new PlaceHold(1001, "CEN"), 202);
         await _host.Decide(id);
 
         var decided = await stream.NextOf("intent-decided");
@@ -57,14 +57,14 @@ public class EventStreamTests(AppFixture app)
         foreach (var title in new[] { 1001, 1005, 1006 })
         {
             var placed = Guid.NewGuid();
-            await _host.PlaceHold(placed, new PlaceHold(patron, title, "CEN"), 202);
+            await _host.PlaceHold(patron, placed, new PlaceHold(title, "CEN"), 202);
             await _host.Decide(placed);
         }
         await using var stream = await EventStream.Open(_host, await _host.SignIn(patron));
         await stream.NextOf("subscribed");
 
         var fourth = Guid.NewGuid();
-        await _host.PlaceHold(fourth, new PlaceHold(patron, 1010, "CEN"), 202);
+        await _host.PlaceHold(patron, fourth, new PlaceHold(1010, "CEN"), 202);
         await _host.Decide(fourth);
 
         var decided = await stream.NextOf("intent-decided");
@@ -84,7 +84,7 @@ public class EventStreamTests(AppFixture app)
         await tab2.NextOf("subscribed");
 
         var id = Guid.NewGuid();
-        await _host.PlaceHold(id, new PlaceHold(patron, 1001, "CEN"), 202);
+        await _host.PlaceHold(patron, id, new PlaceHold(1001, "CEN"), 202);
         await _host.Decide(id);
 
         (await tab1.NextOf("intent-decided")).GetProperty("intentId").GetGuid().ShouldBe(id);
@@ -99,7 +99,7 @@ public class EventStreamTests(AppFixture app)
         await stream.NextOf("subscribed");
 
         var id = Guid.NewGuid();
-        await _host.PlaceHold(id, new PlaceHold(patron, 1001, "CEN"), 202);
+        await _host.PlaceHold(patron, id, new PlaceHold(1001, "CEN"), 202);
 
         var keys = (await stream.AllOf("invalidate", TimeSpan.FromSeconds(1.5))).SelectMany(Keys).ToList();
         keys.ShouldContain($"/holds?patronId={patron}");
@@ -114,7 +114,7 @@ public class EventStreamTests(AppFixture app)
         await someoneElse.NextOf("subscribed");
 
         var id = Guid.NewGuid();
-        await _host.PlaceHold(id, new PlaceHold(asker, 1006, "CEN"), 202);
+        await _host.PlaceHold(asker, id, new PlaceHold(1006, "CEN"), 202);
         await _host.Decide(id);
 
         var heard = new List<string>();

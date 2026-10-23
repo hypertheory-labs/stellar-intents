@@ -26,7 +26,7 @@ const placeHold = defineIntentType<PlaceHold, Hold>({
   candidate: ({ id, payload }) => ({ id, ...payload }),
   apology: {
     say: ({ payload }, failure) =>
-      failure.kind === 'timeout'
+      failure.remedy === 'wait'
         ? `We're not sure your hold on ${payload.title} went through. Check your holds before trying again.`
         : `We couldn't place a hold on ${payload.title}.`,
     actions: ['retry', 'edit'],
@@ -53,9 +53,9 @@ describe('outbox types', () => {
     expect(placeHold.receipt(intent)).toBe("We've received your request to place a hold on Dune.");
   });
 
-  it('the apology can tell a timeout (maybe it landed) from a rejection', () => {
-    expect(placeHold.apology.say(intent, { kind: 'timeout' })).toContain("We're not sure");
-    expect(placeHold.apology.say(intent, { kind: 'rejected', status: 409 })).toBe(
+  it('the apology can tell waiting (maybe it landed) from a no', () => {
+    expect(placeHold.apology.say(intent, { remedy: 'wait' })).toContain("We're not sure");
+    expect(placeHold.apology.say(intent, { remedy: 'no', status: 409 })).toBe(
       "We couldn't place a hold on Dune.",
     );
   });

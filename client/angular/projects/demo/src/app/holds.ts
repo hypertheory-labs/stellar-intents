@@ -59,12 +59,14 @@ export const placeHold = defineIntentType<PlaceHoldPayload, Hold, Hold>({
   apology: {
     say: ({ payload }, failure) => {
       const title = titleName(payload.titleId);
-      switch (failure.kind) {
-        case 'timeout':
+      switch (failure.remedy) {
+        case 'wait':
           return `We're not sure your request for ${title} went through. Check your holds before trying again.`;
-        case 'network':
-          return `We couldn't reach the library to request ${title}.`;
-        case 'rejected':
+        case 'try-again':
+          return `We couldn't get your request for ${title} to the library. Please try again.`;
+        case 'sign-in':
+          return `Please sign in again to request ${title}.`;
+        case 'no':
           return `We couldn't place your hold on ${title}: ${failure.detail ?? 'the library said no.'}`;
       }
     },

@@ -22,6 +22,7 @@ import {
   IntentStatus,
   IntentType,
   Outcome,
+  Remedy,
 } from './types';
 
 /** How long to wait for an answer before an intent is `unknown`, unless its type says. */
@@ -38,6 +39,8 @@ export interface Receipt {
 export interface ApologyNotice {
   readonly intentId: string;
   readonly status: IntentStatus;
+  /** What the person can do next, so a UI can offer it without knowing the intent type. */
+  readonly remedy: Remedy;
   readonly message: string;
   readonly actions: readonly ApologyAction[];
 }
@@ -85,6 +88,7 @@ export const OutboxStore = signalStore(
             {
               intentId: intent.id,
               status: intent.state.status,
+              remedy: failure.remedy,
               message: apology.say(intent, failure),
               actions: apology.actions,
             },
@@ -145,7 +149,7 @@ export const OutboxStore = signalStore(
           ? { status: 'done', doneAt: Date.now() }
           : {
               status: 'needs-attention',
-              failure: { kind: 'rejected', detail: outcome.detail },
+              failure: { remedy: 'no', detail: outcome.detail },
             },
       );
     }
@@ -327,7 +331,7 @@ function failureOf(state: IntentState): Failure | undefined {
     case 'failed-to-send':
       return state.failure;
     case 'unknown':
-      return { kind: 'timeout' };
+      return { remedy: 'wait' };
     default:
       return undefined;
   }
@@ -369,16 +373,25 @@ function hasCandidate(state: IntentState) {
   return state.status !== 'needs-attention' && state.status !== 'failed-to-send';
 }
 
+// WHY a 5xx is "try again", not "no": the server failed, it didn't decide. (Nor did a 401.)
+// Both still land in needs-attention, which is final: an open question in PROTOCOL's
+// Remedies.
+function remedyFor(status: number): Remedy {
+  if (status === 401) return 'sign-in';
+  if (status >= 500) return 'try-again';
+  return 'no';
+}
+
 function stateForError(error: HttpErrorResponse): IntentState {
   if (error.status === 0) {
     // As far as we can tell, it never reached the server.
-    return { status: 'failed-to-send', failure: { kind: 'network' } };
+    return { status: 'failed-to-send', failure: { remedy: 'try-again' } };
   }
   const detail = (error.error as { detail?: unknown } | null)?.detail;
   return {
     status: 'needs-attention',
     failure: {
-      kind: 'rejected',
+      remedy: remedyFor(error.status),
       status: error.status,
       detail: typeof detail === 'string' ? detail : undefined,
     },

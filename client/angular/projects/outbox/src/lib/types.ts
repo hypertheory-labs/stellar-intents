@@ -52,14 +52,21 @@ export type IntentState =
 
 export type IntentStatus = IntentState['status'];
 
+/**
+ * What the person can do about it. Apologies are sorted by this, not by what went wrong
+ * underneath: the reasons belong to the business and can't be counted, but what to do
+ * next can (PROTOCOL: Remedies).
+ *
+ * - `try-again`: it didn't get through (no response), or the server failed (5xx).
+ * - `wait`: no answer in time. It may have landed; we're still finding out.
+ * - `no`: the server said no. Why is in `detail`.
+ * - `sign-in`: the session has ended (401).
+ */
+export type Remedy = 'try-again' | 'wait' | 'no' | 'sign-in';
+
 /** What went wrong, as data an apology can be specific about. */
 export interface Failure {
-  /**
-   * - `rejected`: the server answered no (4xx/5xx).
-   * - `network`: it never reached the server, as far as we can tell.
-   * - `timeout`: no answer in time. Not the same as rejected: it may have landed.
-   */
-  readonly kind: 'rejected' | 'network' | 'timeout';
+  readonly remedy: Remedy;
   /** HTTP status, when there was one. */
   readonly status?: number;
   /** Server-provided detail (e.g. a problem+json `detail`), when there was one. */

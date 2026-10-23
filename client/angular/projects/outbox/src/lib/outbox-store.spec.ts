@@ -19,7 +19,7 @@ const placeHold = defineIntentType<PlaceHold, { id: string; title: string }>({
   candidate: ({ id, payload }) => ({ id, title: payload.title }),
   apology: {
     say: ({ payload }, failure) =>
-      failure.kind === 'timeout'
+      failure.remedy === 'wait'
         ? `We're not sure your hold on ${payload.title} went through.`
         : `We couldn't place a hold on ${payload.title}.`,
     actions: ['retry'],
@@ -94,18 +94,46 @@ describe('OutboxStore', () => {
       {
         intentId: intent.id,
         status: 'needs-attention',
+        remedy: 'no',
         message: "We couldn't place a hold on Dune.",
         actions: ['retry'],
       },
     ]);
   });
 
-  it('a network error is failed-to-send', () => {
+  it('a network error is failed-to-send, and the remedy is to try again', () => {
     const { store, http } = setup();
     const intent = store.enqueue(placeHold, dune);
     http.expectOne(`/holds/${intent.id}`).error(new ProgressEvent('error'));
 
     expect(statusOf(store, intent.id)).toBe('failed-to-send');
+    expect(store.apologies()[0].remedy).toBe('try-again');
+  });
+
+  // Sorted by what the person can do next, not by what went wrong underneath.
+  it.each([
+    [409, 'no'],
+    [422, 'no'],
+    [403, 'no'],
+    [401, 'sign-in'],
+    [500, 'try-again'],
+    [503, 'try-again'],
+  ] as const)('a %i is remedied by %s', (status, remedy) => {
+    const { store, http } = setup();
+    const intent = store.enqueue(placeHold, dune);
+    http.expectOne(`/holds/${intent.id}`).flush(null, { status, statusText: 'Error' });
+
+    expect(store.apologies()[0].remedy).toBe(remedy);
+  });
+
+  it('no answer in time is remedied by waiting', () => {
+    vi.useFakeTimers();
+    const { store } = setup();
+    store.enqueue(placeHold, dune);
+    vi.advanceTimersByTime(5_000);
+
+    expect(store.apologies()[0].remedy).toBe('wait');
+    vi.useRealTimers();
   });
 
   it('no answer in time is unknown, not failure, and a late answer still lands', () => {

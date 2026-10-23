@@ -50,6 +50,10 @@ identity provider.
   `GET /session`, always `200`, with the answer in the body). `EventSource` can't tell a
   `401` from a server that went away, so when the stream drops, a client asks this
   before reconnecting, and stops reconnecting if it's signed out.
+- **[Proposed]** When signed in, the session's answer also says **who**: an id for the
+  user that stays the same across sessions (the reference: `patronId`). A client that
+  stores intents stamps each one with it ([Durability](#durability-proposed)). It's only
+  a label for sorting stored intents; the server never trusts it from the client.
 - **Unsafe requests without an `Idempotency-Key` are rejected** (`400`, problem+json).
   §1 already requires the header. Enforcing it also makes it a CSRF defence: a custom
   header can't cross origins without a preflight. With `SameSite=Strict`, that's all of

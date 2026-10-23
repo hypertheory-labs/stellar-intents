@@ -1,15 +1,16 @@
 # Outbox wire protocol
 
-**Draft 0.1, 2026-10-22.** How a browser and an API agree about commands the user asked
-for, and about reads that have gone stale. Framework-neutral: this page is the contract;
-the Angular `outbox` library and the Wolverine/Fisher backend in this repo are one
-implementation of each side.
+**Draft 0.2, 2026-10-23.** How a browser and an API agree about who's asking, about
+commands the user asked for, and about reads that have gone stale. Framework-neutral:
+this page is the contract; the Angular `outbox` library and the Wolverine/Fisher backend
+in this repo are one implementation of each side.
 
 If you're building a client for this protocol (in any framework), read
 [The client](#the-client) and [Conformance scenarios](#conformance-scenarios). If you're
 building a server, read [The server](#the-server). Everyone reads [Vocabulary](#vocabulary).
 
-Each section is marked:
+Each section is marked, and a bullet that differs from its section carries its own
+marker:
 
 - **[Implemented]**: the reference backend and Angular app do this today.
 - **[Proposed]**: designed, not built yet. Expect it to change.
@@ -21,16 +22,57 @@ Each section is marked:
 | Term             | Means                                                                                                                  |
 | ---------------- | ---------------------------------------------------------------------------------------------------------------------- |
 | **Intent**       | Something the user asked the server to do, with a client-generated id. A request, not a fact.                          |
-| **Intent id**    | A UUID the client makes (`crypto.randomUUID()`). It is the idempotency key **and** the id of the resource it creates.  |
+| **Intent id**    | A UUID the client makes (`crypto.randomUUID()`). It is the idempotency key. For a create, it's also the new resource's id. |
 | **Outcome**      | What finally happened: `done` (good) or `needs-attention` (bad). **An outcome is final.**                              |
 | **Memory**       | The server's data, as the client last fetched it. The client never edits it to "look right."                           |
+| **Receipt**      | What the client can truthfully say about an intent right now ("We've received your request…"). Always true.            |
 | **Candidate**    | The client's guess at what an intent will become. Kept apart from memory and dropped when memory has the real item.    |
+| **Apology**      | What the client tells the person when a guess didn't hold, or might not have. Written in advance, per intent type.      |
+| **Remedy**       | What the person can do about an apology: `try-again`, `wait`, `no`, `sign-in`. See [Remedies](#remedies).            |
 | **Read key**     | The path (and query) of a GET, relative to the API root, e.g. `/holds?patronId=p1`. Identifies a cached read.          |
 
-The client-side states an intent moves through (`requested`, `sent`, `unknown`,
-`received`, `done`, `needs-attention`, `failed-to-send`) are the client's business; the
-wire only carries what the server knows. They're defined in the outbox
-[README](../client/angular/projects/outbox/README.md#lifecycle).
+---
+
+## Intent lifecycle [Implemented]
+
+The states a client keeps for each intent. The wire carries only what the server knows;
+these states are how a client turns that into something true to say. Remedies,
+durability, and the conformance scenarios are all written in terms of them.
+
+```mermaid
+stateDiagram-v2
+    [*] --> requested
+    requested --> sent: sent at once
+    sent --> received: 202
+    sent --> done: other 2xx
+    sent --> needs_attention: 4xx / 5xx
+    sent --> failed_to_send: no response
+    sent --> unknown: no answer in time
+    unknown --> received: late 202
+    unknown --> done: late 2xx, or an outcome
+    unknown --> needs_attention: late error, or an outcome
+    received --> done: outcome
+    received --> needs_attention: outcome
+```
+
+| State             | What's true                                                     | Candidate          | Apology's remedy |
+| ----------------- | --------------------------------------------------------------- | ------------------ | ---------------- |
+| `requested`       | It's held here. Nothing has left.                               | yes                |                  |
+| `sent`            | It left. We don't know if it arrived.                           | yes                |                  |
+| `unknown`         | No answer in time. It **may have landed**. Not a failure.       | yes                | `wait`           |
+| `received`        | The server has it (`202`). **Received is not done.**            | yes                |                  |
+| `done`            | The outcome is known and good.                                  | yes, until retired |                  |
+| `needs-attention` | The outcome is known and bad.                                   | no                 | `no` \*          |
+| `failed-to-send`  | As far as we can tell, it never reached the server.             | no                 | `try-again`      |
+
+Every state has a receipt. \* Or `sign-in` (a `401`), or `try-again` (a `5xx`).
+
+- **A decision is final.** `done` and `needs-attention` never change again; the intent
+  only leaves (retired once memory has it, or dismissed). Answers arrive in any order, and
+  a late one must not undo what's known.
+- **Open:** a `5xx` or a `401` isn't a decision, yet it lands in `needs-attention`. The
+  likely fix is a state that isn't final and resends with the same id. See
+  [Remedies](#remedies).
 
 ---
 
@@ -95,7 +137,8 @@ Content-Type: application/json
 | ----------------------------- | --------------------------------------------------------------------------- | ----------------------------------------------- |
 | `202 Accepted`                | Recorded. The outcome comes later.                                          | `received`                                      |
 | any other `2xx`               | Done, and the outcome is good.                                              | `done`                                          |
-| `4xx` / `5xx`                 | Rejected. Body is `application/problem+json`.                               | `needs-attention` (with the problem's `detail`) |
+| `4xx`                         | Rejected. Body is `application/problem+json`.                               | `needs-attention` (with the problem's `detail`) |
+| `5xx`                         | The server failed. **It didn't decide** (see [Remedies](#remedies)).         | `needs-attention`, for now                      |
 | no response (status 0)        | As far as the client can tell, it never reached the server.                 | `failed-to-send`                                |
 | no answer within the timeout  | **Not a failure.** It may have landed. The request is not cancelled.        | `unknown`, until a late answer or an outcome    |
 
@@ -248,14 +291,16 @@ stale and refetches the ones on screen.
 
 ---
 
-## 4. Reads [Proposed]
+## 4. Reads [Implemented]
 
 Plain `GET`s. The protocol adds only:
 
 - A read's **read key** is its path and query relative to the API root.
-- Representations **SHOULD** carry an `ETag` (the version).
-- The server **MAY** send `Cache-Control` (e.g. `max-age=30, stale-while-revalidate=300`)
-  for reads that tolerate it. The browser's own cache then serves stale-first for free.
+- Representations **SHOULD** carry an `ETag` (the version). (The reference does this for
+  single resources, not for collections.)
+- **[Proposed]** The server **MAY** send `Cache-Control` (e.g.
+  `max-age=30, stale-while-revalidate=300`) for reads that tolerate it. The browser's own
+  cache then serves stale-first for free.
 - Collections **MUST** include the ids of items created by commands, so the client can
   see a candidate's real version arrive (and retire the intent).
 
@@ -269,7 +314,9 @@ What a conforming client has, in any framework. Names are suggestions.
    timestamps, state). Exposes receipts, candidates, and apologies derived from them.
 2. **Intent types, registered in code.** For each kind of command: how to build the
    request from the intent, the receipt text, an optional candidate, an apology, a
-   timeout, and how to read an outcome from a status-check response.
+   timeout, how to read an outcome from a status-check response, and which read keys the
+   intent makes stale (announced when the server has recorded it: the same moments the
+   server would send `invalidate`).
 3. **Sender.** Sends a command per §1 and maps the response to a state. Never cancels on
    timeout. Applies states with one rule: **once `done` or `needs-attention`, never
    change again** (answers arrive in any order).
@@ -279,10 +326,15 @@ What a conforming client has, in any framework. Names are suggestions.
    its own retry), runs the `subscribed` rule, resolves on `intent-decided`, and
    invalidates on `invalidate`.
 6. **Read cache (optional).** Keyed by read key. Holds memory only, **never candidates**.
-   Exposes each read's value, `fetchedAt`, and whether it's stale.
+   Exposes each read's value, `fetchedAt`, and whether it's stale. A read is fresh only
+   while the stream is live and no `invalidate` has covered it since it was fetched.
+   Without a stream, every read is stale-first (shown, then refetched). There's no
+   time-based freshness.
 7. **Merge for display.** What the screen shows is memory plus the candidates whose id
    isn't in memory yet, candidates first, with candidates visibly marked as guesses. When
    a `done` intent's id appears in memory, retire the intent.
+8. **Storage (optional).** Keeps intents across page loads. See
+   [Durability](#durability-proposed).
 
 A client **MUST NOT** write candidates into memory (or the read cache). Because it never
 does, it never has to roll anything back.
@@ -327,16 +379,18 @@ across a reload or a crash. It can't make an intent belong to the *user*; only r
 the server does that. What it's for is the lost submit: the tab closed before the answer
 came, and nobody knows whether it went.
 
-A client that stores intents (the reference client does the first three, except
-resending; see the outbox README):
+A client that stores intents:
 
-- **MUST** store the intent before sending it. Otherwise a tab that closes mid-send
-  leaves nothing to check.
-- **MUST** record whose intent it is (the session's user, §0), and **MUST NOT** send or
-  check an intent for anyone else. On sign-out it **SHOULD** delete that user's stored
-  intents, because the computer may be shared.
-- After a reload, **MUST** status-check (§2) every stored intent that was `sent`,
-  `received`, or `unknown` before resending anything. Resend (same id) only on a `404`.
+- **[Implemented]** **MUST** store the intent before sending it. Otherwise a tab that
+  closes mid-send leaves nothing to check.
+- **[Implemented]** **MUST** record whose intent it is (the session's user, §0), and
+  **MUST NOT** send or check an intent for anyone else.
+- On sign-out it **SHOULD** delete that user's stored intents, because the computer may
+  be shared.
+- **[Implemented]** After a reload, **MUST** status-check (§2) every stored intent that
+  was `sent`, `received`, or `unknown` before resending anything. A restored `sent`
+  intent is `unknown`: nothing from the old page is in flight.
+- Resend (same id) only when that check answers `404`.
 - **MUST NOT** send a stored intent that was never answered once it's older than its
   intent type says a request stays good. Ask the person instead. Acting on yesterday's
   request is acting for someone whose situation may have changed.
@@ -376,9 +430,9 @@ implementation can be checked without reading the reference code.
 3. `409` with problem+json `detail: "X"` → `needs-attention`, remedy `no`, and the apology
    can say "X". A `401` → remedy `sign-in`.
 4. `500` with an HTML body → `needs-attention`, remedy `try-again`, no `detail`, no crash.
-5. Network failure (status 0) → `failed-to-send`.
-6. No answer within the timeout → `unknown`; then a late `202` → `received`; a late `200`
-   → `done`.
+5. Network failure (status 0) → `failed-to-send`, remedy `try-again`.
+6. No answer within the timeout → `unknown`, remedy `wait`; then a late `202` →
+   `received`; a late `200` → `done`.
 7. *(server)* Same id, same body, twice → same answer both times, one resource. Same id,
    different body → `409`.
 
@@ -409,9 +463,7 @@ implementation can be checked without reading the reference code.
 17. A `needs-attention` or `failed-to-send` intent shows no candidate, and shows its apology.
 18. A `done` intent whose id is in memory is retired.
 
-**Durability [Proposed]**
-
-Scenarios 19 and 21 pass in the reference client. 20, 22 and 23 aren't built.
+**Durability [Proposed]** (19 and 21 are implemented; 20, 22 and 23 aren't built)
 
 19. An intent is `sent` and the page reloads before the answer; the server had recorded
     it → after the reload, a status check reaches its outcome, and nothing is resent.
@@ -441,7 +493,8 @@ Scenarios 19 and 21 pass in the reference client. 20, 22 and 23 aren't built.
 ## Reference implementations
 
 - **Client (Angular, NgRx Signal Store):** [`client/angular/projects/outbox`](../client/angular/projects/outbox),
-  with a page using it in [`examples/angular-holds`](../examples/angular-holds).
+  and an app using it against the reference server in
+  [`client/angular/projects/demo`](../client/angular/projects/demo).
 - **Server (Wolverine + Fisher, the Marten API on SQLite, .NET 10):** [`server/dotnet/ReferenceApi/Holds`](../server/dotnet/ReferenceApi/Holds):
   `HoldEndpoints.cs` (§1, §2) and `HoldKeys.cs` (which reads a change makes stale); the
   stream itself, which knows nothing about holds, is in [`Streaming/`](../server/dotnet/ReferenceApi/Streaming)

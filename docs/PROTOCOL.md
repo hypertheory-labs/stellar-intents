@@ -39,22 +39,33 @@ The states a client keeps for each intent. The wire carries only what the server
 these states are how a client turns that into something true to say. Remedies,
 durability, and the conformance scenarios are all written in terms of them.
 
+Grouped by **phase**: who has the request. Moving between boxes is custody changing
+hands. **[Proposed]** That's when a receipt should change: one receipt per phase, its
+words chosen by the business, not one per state. (Today a receipt is one sentence per
+intent type, and it isn't true in every state.)
+
 ```mermaid
 stateDiagram-v2
-    [*] --> requested
-    requested --> sent: sent at once
-    sent --> received: 202
-    sent --> done: other 2xx
-    sent --> needs_attention: 4xx (not 401)
-    sent --> interrupted: no response, 5xx, 401
-    sent --> unknown: no answer in time
-    unknown --> received: late 202
-    unknown --> done: late 2xx, or an outcome
-    unknown --> needs_attention: late 4xx, or an outcome
-    interrupted --> sent: sent again, same id
-    interrupted --> done: it landed after all (status check)
-    received --> done: outcome
-    received --> needs_attention: outcome
+    state "With us (this browser)" as us {
+        [*] --> requested
+        requested --> sent: at once
+        sent --> unknown: no answer in time
+        sent --> interrupted: no response, 5xx, 401
+        unknown --> interrupted: late 5xx
+        interrupted --> sent: again, same id
+    }
+    state "With them (the server has it)" as them {
+        [*] --> received
+    }
+    state "Decided (final)" as decided {
+        done
+        needs_attention
+    }
+    [*] --> us
+    us --> them: 202 (or a late 202)
+    us --> decided: other 2xx, a 4xx, or a status check that says so
+    them --> decided: an outcome (stream or status check)
+    decided --> [*]: retired, or dismissed
 ```
 
 | State             | What's true                                                     | Candidate          | Apology's remedy |
@@ -75,6 +86,19 @@ Every state has a receipt.
 - **Only a decision is final.** A `5xx`, a `401`, or no response isn't a decision, so it
   lands in `interrupted`, which goes again with the **same id**. A new id would be a new
   request, and a duplicate if the first one landed after the server committed.
+- **[Proposed]** Changes the phases suggest:
+  - **One final state; the edge into it says how it ended.** `done` and
+    `needs-attention` are both final, and only the outcome differs: *accepted*,
+    *declined*, or *withdrawn* (the person said "never mind" before it left this
+    browser). "Needs attention" is the wrong name for a decision against, and the right
+    one for the next bullet.
+  - **With them, stuck:** `received` past the time the server promised (a `202` with
+    `Retry-After`). The receipt's "you'll hear back within a minute" has lapsed.
+  - **With them, needs a person:** the server can't decide without its own staff (a
+    dead-lettered message). Nothing on the wire can say so today. It needs its own
+    event, and its remedy is an offer: "let's talk." It isn't final; a person will decide.
+  - "Never mind" *after* the request left this browser isn't a withdrawal. It's a new
+    intent (a cancel), and the first one can still be decided.
 
 ---
 

@@ -31,7 +31,7 @@ things the code hides?
   - at the limit → `no`: "You already have 3 holds, the limit." → `HoldRejected`.
     ⚠ No offer. **Library → Patron:** "cancel one of them?" is the obvious one.
   - the decision itself fails (an exception, retries used up) → ⚠ **nothing.** The
-    message is dead-lettered (Wolverine's default, as I understand it; not checked), and the patron's intent sits in `received` with no word.
+    message is dead-lettered (Wolverine's default once its retries run out), and the patron's intent sits in `received` with no word.
     Nobody escalates. (**Library → Librarian** would be the shape.)
   - signed out → `sign-in` → `interrupted`, same id.
   - the same id with a different body, or another patron's → `no` (409).

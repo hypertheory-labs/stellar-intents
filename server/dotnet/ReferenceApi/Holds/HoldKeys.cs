@@ -1,3 +1,4 @@
+using Edge.Sse;
 using ReferenceApi.Streaming;
 
 namespace ReferenceApi.Holds;
@@ -16,9 +17,9 @@ namespace ReferenceApi.Holds;
 /// </remarks>
 public static class HoldKeys
 {
-    public static Invalidate[] Changed(Hold hold) =>
+    public static ServerSentEvent[] Changed(Hold hold) =>
     [
-        new(hold.PatronId, [$"/holds/{hold.Id}", $"/holds?patronId={hold.PatronId}"]),
-        new(null, [$"/holds?titleId={hold.TitleId}"]),
+        ProtocolEvents.Invalidate(hold.PatronId, $"/holds/{hold.Id}", $"/holds?patronId={hold.PatronId}"),
+        ProtocolEvents.Invalidate(null, $"/holds?titleId={hold.TitleId}"),
     ];
 }

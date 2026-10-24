@@ -146,7 +146,7 @@ public static class EvaluateHoldHandler
 
     public const string CancelledFirst = "You cancelled this request before it was decided.";
 
-    // Returns protocol messages (the decision, and which reads changed) as cascading
+    // Returns protocol events (the decision, and which reads changed) as cascading
     // messages: Wolverine sends them only after this handler's transaction (the decision
     // event) commits. See Streaming/ProtocolMessages.cs for where they go.
     public static async Task<OutgoingMessages> Handle(EvaluateHold command, IDocumentSession session)
@@ -160,7 +160,7 @@ public static class EvaluateHoldHandler
         // form: unsettled/holds-in-irmto.md).
         if (hold.Status == HoldStatus.Cancelled)
         {
-            messages.Add(new IntentDecided(hold.PatronId, hold.Id, IntentOutcome.Withdrawn, CancelledFirst));
+            messages.Add(ProtocolEvents.IntentDecided(hold.PatronId, hold.Id, IntentOutcome.Withdrawn, CancelledFirst));
             return messages;
         }
 
@@ -173,12 +173,12 @@ public static class EvaluateHoldHandler
             var reason = $"You already have {HoldLimit} holds, the limit.";
             session.Events.Append(hold.Id, new HoldRejected(hold.Id, reason, DateTimeOffset.UtcNow));
             // The hold's id is the intent's id: the client generated it (PROTOCOL §1).
-            messages.Add(new IntentDecided(hold.PatronId, hold.Id, IntentOutcome.Declined, reason));
+            messages.Add(ProtocolEvents.IntentDecided(hold.PatronId, hold.Id, IntentOutcome.Declined, reason));
         }
         else
         {
             session.Events.Append(hold.Id, new HoldPlaced(hold.Id, DateTimeOffset.UtcNow));
-            messages.Add(new IntentDecided(hold.PatronId, hold.Id, IntentOutcome.Accepted));
+            messages.Add(ProtocolEvents.IntentDecided(hold.PatronId, hold.Id, IntentOutcome.Accepted));
         }
 
         messages.AddRange(HoldKeys.Changed(hold));

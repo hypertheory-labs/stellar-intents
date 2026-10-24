@@ -31,6 +31,8 @@ builder.Host.UseWolverine(opts =>
 {
     // commit each handler's and endpoint's session (and its outbox) as one transaction
     opts.Policies.AutoApplyTransactions();
+    // events for the open SSE streams, sent after commit (Edge.Sse)
+    opts.UseServerSentEvents();
 });
 builder.Services.AddWolverineHttp();
 

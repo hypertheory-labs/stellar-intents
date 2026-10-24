@@ -27,8 +27,9 @@ in cold, so every word in its vocabulary must change code or catch a bug, or it 
 
 - **Fisher** is Marten on SQLite (**Polecat** is Marten on SQL Server). It's the same
   JasperFx event-sourcing API, so Marten docs apply.
-- SSE: .NET 10 has first-class support (`TypedResults.ServerSentEvents`). Whether SSE fan-out
-  belongs in Wolverine as a transport is an **open question**. Don't assume it's one.
+- SSE lives in `server/dotnet/Edge.Sse`, and it's **not a Wolverine transport**: a browser
+  doesn't ack and isn't a peer. Wolverine is in it only so events go out after commit. A
+  transport would be the backplane *between* instances, which isn't built.
 
 ## Working here
 

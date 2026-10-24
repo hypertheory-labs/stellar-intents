@@ -2,11 +2,13 @@ using System.Collections.Concurrent;
 using System.Net.ServerSentEvents;
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Options;
 
-namespace ReferenceApi.Streaming;
+namespace Edge.Sse;
 
 /// <summary>
-/// Fans protocol events out to every open connection, by patron.
+/// Fans events out to every open connection, by audience.
 /// </summary>
 /// <remarks>
 /// WHY one channel PER CONNECTION, not one shared channel: .NET channels have competing
@@ -16,45 +18,41 @@ namespace ReferenceApi.Streaming;
 ///
 /// WHY bounded, and WHY "complete the channel" when it's full: a connection that stops
 /// reading (a frozen tab) must not grow memory forever. When its channel is full we end
-/// that stream instead of dropping events silently. The browser reconnects, gets
-/// "subscribed" again, and re-checks (PROTOCOL §3). A dropped connection is survivable; a
+/// that stream instead of dropping events silently. The browser reconnects and gets the
+/// opening event again, which tells it to re-check. A dropped connection is survivable; a
 /// silently dropped event isn't.
 ///
 /// FOR REAL:
-/// - Per-process. With more than one instance, every instance has to see every protocol
-///   message: a backplane (a Wolverine transport every instance listens to). The hub's shape
-///   survives; its handlers would just be fed from that.
-/// - No replay, deliberately (PROTOCOL §3, stream rules).
+/// - Per-process. With more than one instance, every instance has to see every event: a
+///   backplane (a Wolverine transport every instance listens to). The hub's shape
+///   survives; it would just be fed from that.
+/// - No replay, deliberately: the opening event stands in for it.
 ///
 /// WHY end every stream when the app starts stopping: an open stream is a request in
 /// flight, so graceful shutdown waits for it (30 s by default) while heartbeats carry on.
 /// During a rolling deploy, clients would sit on a dying instance for that long. Ending
 /// the streams lets them reconnect at once, to an instance that's staying.
 /// </remarks>
-public sealed class EventStreamHub(IConfiguration config, IHostApplicationLifetime lifetime)
+public sealed class SseHub(IOptions<SseOptions> options, IHostApplicationLifetime lifetime)
 {
-    // patronId -> (connectionId -> that connection's channel)
-    private readonly ConcurrentDictionary<string, ConcurrentDictionary<Guid, Channel<SseItem<object>>>> _byPatron = new();
+    private readonly SseOptions _options = options.Value;
 
-    // Generous for one person's reads and intents. FOR REAL: size it against burst rate.
-    private const int PerConnectionCapacity = 64;
-
-    // PROTOCOL §3: about every 15-30 s, so proxies don't close an idle stream.
-    private readonly TimeSpan _heartbeat = TimeSpan.FromSeconds(config.GetValue("Events:HeartbeatSeconds", 20));
+    // audience -> (connectionId -> that connection's channel)
+    private readonly ConcurrentDictionary<string, ConcurrentDictionary<Guid, Channel<SseItem<object>>>> _byAudience = new();
 
     /// <summary>One connection's stream. Ends when the client disconnects.</summary>
     public async IAsyncEnumerable<SseItem<object>> Subscribe(
-        string patronId,
+        string audience,
         [EnumeratorCancellation] CancellationToken cancellation)
     {
-        var channel = Channel.CreateBounded<SseItem<object>>(new BoundedChannelOptions(PerConnectionCapacity)
+        var channel = Channel.CreateBounded<SseItem<object>>(new BoundedChannelOptions(_options.PerConnectionCapacity)
         {
             SingleReader = true, // only this connection reads it
             SingleWriter = false, // events arrive from any handler thread, heartbeats from a timer
         });
 
         var connectionId = Guid.NewGuid();
-        var connections = _byPatron.GetOrAdd(patronId, _ => new());
+        var connections = _byAudience.GetOrAdd(audience, _ => new());
         connections[connectionId] = channel;
         using var heartbeats = StartHeartbeats(channel, cancellation);
         // The app is stopping: end this stream normally (see remarks). Completing the
@@ -63,9 +61,9 @@ public sealed class EventStreamHub(IConfiguration config, IHostApplicationLifeti
 
         try
         {
-            // PROTOCOL §3: first on every connection. "You're live; anything that happened
-            // while you were away is not coming down this pipe, so re-check now."
-            yield return new SseItem<object>(new { }, "subscribed");
+            // First on every connection: "you're live; anything that happened while you were
+            // away is not coming down this pipe, so re-check now."
+            if (_options.OpeningEvent is { } opening) yield return new SseItem<object>(new { }, opening);
 
             await foreach (var item in channel.Reader.ReadAllAsync(cancellation))
                 // No EventId: there's no replay, so an id would promise a resume we can't keep.
@@ -74,7 +72,7 @@ public sealed class EventStreamHub(IConfiguration config, IHostApplicationLifeti
         finally
         {
             connections.TryRemove(connectionId, out _);
-            // FOR REAL: remove the patron's entry when it empties (carefully: racing a new subscriber).
+            // FOR REAL: remove the audience's entry when it empties (carefully: racing a new subscriber).
         }
     }
 
@@ -83,20 +81,20 @@ public sealed class EventStreamHub(IConfiguration config, IHostApplicationLifeti
     {
         var item = new SseItem<object>(data, eventType);
         var targets = audience is null
-            ? _byPatron.Values.SelectMany(c => c.Values)
-            : _byPatron.TryGetValue(audience, out var connections) ? connections.Values : [];
+            ? _byAudience.Values.SelectMany(c => c.Values)
+            : _byAudience.TryGetValue(audience, out var connections) ? connections.Values : [];
 
         foreach (var channel in targets) Offer(channel, item);
     }
 
-    // WHY a "heartbeat" event and not the comment line (": keep-alive") PROTOCOL §3 suggests:
-    // .NET's SseItem has no way to write a comment. An event nobody listens for is just as
-    // invisible to EventSource (named events only reach listeners for that name).
+    // WHY a "heartbeat" event and not a comment line (": keep-alive"): .NET's SseItem has no
+    // way to write a comment. An event nobody listens for is just as invisible to
+    // EventSource (named events only reach listeners for that name).
     private Timer StartHeartbeats(Channel<SseItem<object>> channel, CancellationToken cancellation) =>
         new(_ =>
         {
             if (!cancellation.IsCancellationRequested) Offer(channel, new SseItem<object>(new { }, "heartbeat"));
-        }, null, _heartbeat, _heartbeat);
+        }, null, _options.Heartbeat, _options.Heartbeat);
 
     private static void Offer(Channel<SseItem<object>> channel, SseItem<object> item)
     {

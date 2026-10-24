@@ -1,11 +1,10 @@
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
-using ReferenceApi.Streaming;
+using Microsoft.Extensions.Options;
 
-namespace ReferenceApi.Tests;
+namespace Edge.Sse.Tests;
 
 /// <summary>The hub on its own, where the app's lifetime can be driven by hand.</summary>
-public class EventStreamHubTests
+public class SseHubTests
 {
     private sealed class Lifetime : IHostApplicationLifetime
     {
@@ -20,9 +19,9 @@ public class EventStreamHubTests
     public async Task every_stream_ends_when_the_app_starts_stopping()
     {
         var lifetime = new Lifetime();
-        var hub = new EventStreamHub(new ConfigurationBuilder().Build(), lifetime);
+        var hub = new SseHub(Options.Create(new SseOptions()), lifetime);
         var stream = hub.Subscribe("P0042", CancellationToken.None).GetAsyncEnumerator();
-        (await stream.MoveNextAsync()).ShouldBeTrue(); // subscribed
+        (await stream.MoveNextAsync()).ShouldBeTrue(); // the opening event
 
         var next = stream.MoveNextAsync().AsTask();
         lifetime.StopApplication();

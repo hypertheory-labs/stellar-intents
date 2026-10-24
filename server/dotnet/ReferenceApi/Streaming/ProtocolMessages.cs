@@ -1,9 +1,11 @@
+using Edge.Sse;
+
 namespace ReferenceApi.Streaming;
 
 /*
   The messages the event stream carries (PROTOCOL §3). They know nothing about holds:
   any part of the app that decides an intent or changes a read publishes these, and
-  EventStreamHub fans them out.
+  the SSE hub (Edge.Sse) fans them out.
 
   WHY publish these from the domain code (and not have the stream watch domain events):
   it's the lowest rung. A service only has to say "intent X was decided" and "these reads
@@ -37,7 +39,7 @@ public record Invalidate(string? Audience, string[] Keys);
 /// <summary>Hands committed protocol messages to the hub.</summary>
 public static class ProtocolMessageHandler
 {
-    public static void Handle(IntentDecided decided, EventStreamHub hub) =>
+    public static void Handle(IntentDecided decided, SseHub hub) =>
         hub.Publish(decided.Audience, "intent-decided", new
         {
             intentId = decided.IntentId,
@@ -50,6 +52,6 @@ public static class ProtocolMessageHandler
             detail = decided.Detail,
         });
 
-    public static void Handle(Invalidate invalidate, EventStreamHub hub) =>
+    public static void Handle(Invalidate invalidate, SseHub hub) =>
         hub.Publish(invalidate.Audience, "invalidate", new { keys = invalidate.Keys });
 }

@@ -1,9 +1,9 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Edge.Sse;
 using ReferenceApi.Dev;
 using ReferenceApi.Holds;
 using ReferenceApi.Session;
-using ReferenceApi.Streaming;
 using Fisher;
 using JasperFx.Events.Daemon;
 using JasperFx.Events.Projections;
@@ -41,8 +41,10 @@ builder.Services.AddCookieSession();
 builder.Services.ConfigureHttpJsonOptions(json =>
     json.SerializerOptions.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase)));
 
-// fans committed protocol messages out to open SSE connections (see Streaming/)
-builder.Services.AddSingleton<EventStreamHub>();
+// fans committed protocol messages out to open SSE connections (Edge.Sse; the messages
+// are in Streaming/). PROTOCOL §3: a heartbeat about every 15-30 s.
+builder.Services.AddServerSentEvents(options =>
+    options.Heartbeat = TimeSpan.FromSeconds(builder.Configuration.GetValue("Events:HeartbeatSeconds", 20)));
 
 // The API's documentation: /openapi/v1.json
 builder.Services.AddOpenApi(options => options.AddDocumentTransformer((document, _, _) =>
@@ -71,6 +73,12 @@ app.MapOpenApi();
 app.MapScalarApiReference(options => options.WithTitle("Holds reference API"));
 app.MapGet("/", () => Results.Redirect("/scalar")).ExcludeFromDescription();
 app.MapWolverineEndpoints();
+// PROTOCOL §3: the signed-in patron's event stream. "subscribed" first, then
+// "intent-decided" and "invalidate" as they happen, and "heartbeat" now and then.
+app.MapServerSentEvents("/events", context => context.User.PatronId())
+    .RequireAuthorization()
+    .WithTags("Events")
+    .WithSummary("The signed-in patron's event stream (Server-Sent Events). 401 without a session.");
 app.MapDevReset(); // Development only; see Dev/DevReset.cs
 app.MapDevSignIn(); // Development only; see Session/DevSignIn.cs
 app.Run();

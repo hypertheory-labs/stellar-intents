@@ -7,6 +7,12 @@ we're working on" is the current thesis: the Edge (BFF) is the application, and 
 interesting part is a layer on top of Wolverine/Marten for it. The browser client and demo
 are for sanity checks now. Don't pour more work into them unprompted.
 
+## No bullshit
+
+You're a partner here, not a note-taker. Jeff's confident statements aren't specs: push
+back, especially on what to leave out. The project has to stay legible to an agent walking
+in cold, so every word in its vocabulary must change code or catch a bug, or it goes.
+
 ## What matters most
 
 - **`docs/PROTOCOL.md` is the thing being proved.** The Angular libraries and the .NET

@@ -2,8 +2,10 @@
 
 An experiment, not a product and not course material: how opinionated can a frontend
 get about state if it treats the app as **memories, guesses, and apologies** (Helland)?
-Nobody is waiting on it. Jeff is on the JasperFx core team, so pieces may later become
-NuGet/npm packages or PRs to Wolverine/Marten. Don't design toward that yet.
+Nobody is waiting on it. Jeff is on the JasperFx core team. The README's "What we think
+we're working on" is the current thesis: the Edge (BFF) is the application, and the
+interesting part is a layer on top of Wolverine/Marten for it. The browser client and demo
+are for sanity checks now. Don't pour more work into them unprompted.
 
 ## What matters most
 

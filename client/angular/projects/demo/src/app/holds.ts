@@ -78,11 +78,11 @@ export const placeHold = defineIntentType<PlaceHoldPayload, Hold, Hold>({
     outcome: (hold) => {
       switch (hold.status) {
         case 'placed':
-          return { status: 'done' };
+          return { outcome: 'accepted' };
         case 'rejected':
-          return { status: 'needs-attention', detail: hold.reason ?? undefined };
+          return { outcome: 'declined', detail: hold.reason ?? undefined };
         case 'cancelled': // cancelled before it was decided; the server says the same
-          return { status: 'needs-attention', detail: cancelledFirst };
+          return { outcome: 'withdrawn' };
         case 'requested':
           return undefined;
       }
@@ -90,9 +90,6 @@ export const placeHold = defineIntentType<PlaceHoldPayload, Hold, Hold>({
   },
   invalidates: ({ id, payload }) => holdKeys(id, payload.patronId, payload.titleId),
 });
-
-/** Server: EvaluateHoldHandler.CancelledFirst. */
-const cancelledFirst = 'You cancelled this request before it was decided.';
 
 export interface CancelHoldPayload {
   holdId: string;
@@ -121,10 +118,10 @@ export const cancelHold = defineIntentType<CancelHoldPayload, never, Hold>({
     url: ({ payload }) => `/api/holds/${payload.holdId}`,
     outcome: (hold) =>
       hold.status === 'cancelled'
-        ? { status: 'done' }
+        ? { outcome: 'accepted' }
         : hold.status === 'rejected'
           ? {
-              status: 'needs-attention',
+              outcome: 'declined',
               detail: "This hold was never placed, so there's nothing to cancel.",
             }
           : undefined,

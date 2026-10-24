@@ -146,14 +146,17 @@ function follow({
     opened.addEventListener('intent-decided', (event) => {
       const decided = parse<{ intentId: string; outcome: string; detail?: string | null }>(event);
       if (!decided) return;
-      // FOR NOW: `withdrawn` lands as needs-attention, as it did before it had a name. The
-      // client's own final state catches up in the next step.
-      outbox.settle(
-        decided.intentId,
-        decided.outcome === 'accepted'
-          ? { status: 'done' }
-          : { status: 'needs-attention', detail: decided.detail ?? undefined },
-      );
+      switch (decided.outcome) {
+        case 'accepted':
+        case 'withdrawn':
+          return outbox.settle(decided.intentId, { outcome: decided.outcome });
+        case 'declined':
+          return outbox.settle(decided.intentId, {
+            outcome: 'declined',
+            detail: decided.detail ?? undefined,
+          });
+        // Anything else is a newer server than this client: not an outcome we can keep.
+      }
     });
     opened.addEventListener('invalidate', (event) => {
       const invalidate = parse<{ keys: string[] }>(event);

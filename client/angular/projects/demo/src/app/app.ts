@@ -222,12 +222,12 @@ export class App {
     () => this.waitList.value()?.filter((h) => h.status === 'placed').length ?? 0,
   );
 
-  /** Intents to cancel that haven't been decided against: their holds show "cancelling…". */
+  /** Intents to cancel that haven't been declined: their holds show "cancelling…". */
   private readonly cancelling = computed(() =>
     this.outbox
       .entities()
       .filter((i) => i.type === cancelHold.name)
-      .filter((i) => i.state.status !== 'needs-attention')
+      .filter((i) => i.state.status !== 'decided' || i.state.outcome === 'accepted')
       .map((i) => ({ intentId: i.id, holdId: (i.payload as { holdId: string }).holdId })),
   );
 
@@ -250,7 +250,9 @@ export class App {
     effect(() => {
       const memory = this.myHolds.value();
       if (!memory) return;
-      const done = this.outbox.entities().filter((i) => i.state.status === 'done');
+      const done = this.outbox
+        .entities()
+        .filter((i) => i.state.status === 'decided' && i.state.outcome === 'accepted');
       const placed = readyToRetire(
         done.filter((i) => i.type === placeHold.name).map((i) => i.id),
         memory,
@@ -263,8 +265,9 @@ export class App {
       untracked(() => {
         [...placed, ...cancelled.map((c) => c.intentId)].forEach((id) => this.outbox.retire(id));
         // A hold cancelled before it was decided: its place-hold intent (same id as the
-        // hold) is over too. The person withdrew it themselves, so it's dismissed, not
-        // apologised for, and its guess doesn't come back.
+        // hold) is over too. The server will say `withdrawn` when it gets to the decision,
+        // but until then the guess would come back, so let it go now. Only this app knows
+        // the cancel overtakes that intent; nothing on the wire says so yet.
         cancelled.forEach((c) => this.outbox.dismiss(c.holdId));
       });
     });

@@ -47,7 +47,7 @@ const placeHold = defineIntentType<{ title: string }, never, { status: string }>
   apology: { say: (_, failure) => failure.detail ?? 'No.', actions: [] },
   status: {
     url: (intent) => `/holds/${intent.id}`,
-    outcome: (hold) => (hold.status === 'placed' ? { status: 'done' } : undefined),
+    outcome: (hold) => (hold.status === 'placed' ? { outcome: 'accepted' } : undefined),
   },
 });
 
@@ -87,7 +87,11 @@ function received({ store, http }: Pick<ReturnType<typeof setup>, 'store' | 'htt
   return intent;
 }
 
-const statusOf = (store: OutboxStore, id: string) => store.entityMap()[id]?.state.status;
+/** The state, or for a decided intent, how it ended. */
+const statusOf = (store: OutboxStore, id: string) => {
+  const state = store.entityMap()[id]?.state;
+  return state?.status === 'decided' ? state.outcome : state?.status;
+};
 type OutboxStore = ReturnType<typeof setup>['store'];
 
 describe('the event stream (PROTOCOL §3)', () => {
@@ -105,7 +109,7 @@ describe('the event stream (PROTOCOL §3)', () => {
     ctx.latest().emit('subscribed');
 
     ctx.http.expectOne(`/holds/${intent.id}`).flush({ status: 'placed' });
-    expect(statusOf(ctx.store, intent.id)).toBe('done');
+    expect(statusOf(ctx.store, intent.id)).toBe('accepted');
     expect(ctx.seen.map((e) => e.type)).toEqual(['[Server] subscribed']);
   });
 
@@ -139,9 +143,30 @@ describe('the event stream (PROTOCOL §3)', () => {
       detail: 'You already have 3 holds, the limit.',
     });
 
-    expect(statusOf(ctx.store, placed.id)).toBe('done');
-    expect(statusOf(ctx.store, refused.id)).toBe('needs-attention');
+    expect(statusOf(ctx.store, placed.id)).toBe('accepted');
+    expect(statusOf(ctx.store, refused.id)).toBe('declined');
     expect(ctx.store.apologies()[0].message).toBe('You already have 3 holds, the limit.');
+  });
+
+  // docs/intents/holds.md: a cancel that got there before the decision
+  it('withdrawn lets the intent go: no apology, no guess, nothing left to show', () => {
+    const ctx = setup();
+    const intent = received(ctx);
+
+    ctx.latest().emit('intent-decided', { intentId: intent.id, outcome: 'withdrawn' });
+
+    expect(ctx.store.entityMap()[intent.id]).toBeUndefined();
+    expect(ctx.store.apologies()).toEqual([]);
+    expect(ctx.store.receipts()).toEqual([]);
+  });
+
+  it("ignores an outcome it doesn't know (a newer server)", () => {
+    const ctx = setup();
+    const intent = received(ctx);
+
+    ctx.latest().emit('intent-decided', { intentId: intent.id, outcome: 'postponed' });
+
+    expect(statusOf(ctx.store, intent.id)).toBe('received');
   });
 
   it('conformance 8: intent-decided, then the late 202 of the command: still done', () => {
@@ -152,7 +177,7 @@ describe('the event stream (PROTOCOL §3)', () => {
     ctx.latest().emit('intent-decided', { intentId: intent.id, outcome: 'accepted' });
     put.flush(null, { status: 202, statusText: 'Accepted' });
 
-    expect(statusOf(ctx.store, intent.id)).toBe('done');
+    expect(statusOf(ctx.store, intent.id)).toBe('accepted');
   });
 
   it('invalidate is announced with its keys, for whoever holds reads', () => {
@@ -259,7 +284,7 @@ describe('the floor: checking when the user comes back (PROTOCOL §2)', () => {
     document.dispatchEvent(new Event('visibilitychange'));
 
     ctx.http.expectOne(`/holds/${intent.id}`).flush({ status: 'placed' });
-    expect(statusOf(ctx.store, intent.id)).toBe('done');
+    expect(statusOf(ctx.store, intent.id)).toBe('accepted');
     expect(ctx.sources).toEqual([]);
   });
 });

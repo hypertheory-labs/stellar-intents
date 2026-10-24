@@ -104,9 +104,8 @@ export const OutboxStore = signalStore(
       requested: store._dispatch.intentRequested,
       sent: store._dispatch.intentSent,
       received: store._dispatch.intentReceived,
-      done: store._dispatch.intentDone,
+      decided: store._dispatch.intentDecided,
       unknown: store._dispatch.intentUnknown,
-      'needs-attention': store._dispatch.intentNeedsAttention,
       interrupted: store._dispatch.intentInterrupted,
     } satisfies Record<IntentStatus, unknown>;
 
@@ -130,11 +129,17 @@ export const OutboxStore = signalStore(
       if (!now) return; // retired or dismissed while in flight: nothing to update
       // A decision is final. Answers can arrive in any order (a slow 202 after a status check
       // or a server event already said "done"), and a late one must not undo what's known.
-      if (now.state.status === 'done' || now.state.status === 'needs-attention') return;
+      if (now.state.status === 'decided') return;
       patchState(store, updateEntity({ id, changes: { state } }));
       void persist(current(id));
       transitionEvents[state.status]({ intent: current(id) });
       if (serverRecorded(now.state, state)) announceInvalidation(current(id));
+      // Withdrawn: the person took it back themselves. No receipt, guess, or apology is
+      // owed, so once it's been announced there's nothing left to hold.
+      if (state.status === 'decided' && state.outcome === 'withdrawn') {
+        patchState(store, removeEntity(id));
+        forget(id);
+      }
     }
 
     // The type's declared invalidation (see IntentType.invalidates), whenever the server has
@@ -145,14 +150,17 @@ export const OutboxStore = signalStore(
     }
 
     function settle(id: string, outcome: Outcome) {
+      const decidedAt = Date.now();
       moveTo(
         id,
-        outcome.status === 'done'
-          ? { status: 'done', doneAt: Date.now() }
-          : {
-              status: 'needs-attention',
+        outcome.outcome === 'declined'
+          ? {
+              status: 'decided',
+              decidedAt,
+              outcome: 'declined',
               failure: { remedy: 'no', detail: outcome.detail },
-            },
+            }
+          : { status: 'decided', decidedAt, outcome: outcome.outcome },
       );
     }
 
@@ -214,7 +222,7 @@ export const OutboxStore = signalStore(
               intent.id,
               response.status === 202
                 ? { status: 'received', receivedAt: Date.now() }
-                : { status: 'done', doneAt: Date.now() },
+                : { status: 'decided', decidedAt: Date.now(), outcome: 'accepted' },
             );
           },
           error: (error: HttpErrorResponse) => {
@@ -243,7 +251,7 @@ export const OutboxStore = signalStore(
           payload,
           requestedAt: Date.now(),
           state: { status: 'requested' },
-          schema: 1,
+          schema: 2,
         };
         // the store holds every type's intents; it never reads the payload
         patchState(store, addEntity(intent as Intent));
@@ -277,11 +285,8 @@ export const OutboxStore = signalStore(
        * For an intent whose outcome the app learned some other way. (The outbox's own ways
        * are `checkStatus` and the event stream; see provideOutboxStream.)
        */
-      resolve(
-        id: string,
-        outcome: { status: 'done' } | { status: 'needs-attention'; failure: Failure },
-      ) {
-        moveTo(id, outcome.status === 'done' ? { status: 'done', doneAt: Date.now() } : outcome);
+      resolve(id: string, outcome: Outcome) {
+        settle(id, outcome);
       },
 
       /** The server decided (PROTOCOL §3, intent-decided). Ids it doesn't hold are ignored. */
@@ -307,6 +312,7 @@ export const OutboxStore = signalStore(
         const stored = (await store._storage?.load(owner)) ?? [];
         const restored = stored
           // already here (this page enqueued it), or of a type this build doesn't know
+          .map(upcast)
           .filter((intent) => !current(intent.id) && store._types.has(intent.type))
           .map((intent) => ({ ...intent, state: resumed(intent.state) }));
         patchState(store, addEntities(restored));
@@ -357,7 +363,8 @@ export const OutboxStore = signalStore(
 /** The failure an apology should speak to, if the state has one. */
 function failureOf(state: IntentState): Failure | undefined {
   switch (state.status) {
-    case 'needs-attention':
+    case 'decided':
+      return state.outcome === 'declined' ? state.failure : undefined;
     case 'interrupted':
       return state.failure;
     case 'unknown':
@@ -374,10 +381,11 @@ function failureOf(state: IntentState): Failure | undefined {
 function serverRecorded(from: IntentState, to: IntentState) {
   switch (to.status) {
     case 'received':
-    case 'done':
       return true;
-    case 'needs-attention':
-      return from.status === 'received' || from.status === 'unknown';
+    case 'decided':
+      return (
+        to.outcome === 'accepted' || from.status === 'received' || from.status === 'unknown'
+      );
     default:
       return false;
   }
@@ -398,9 +406,28 @@ function resumed(state: IntentState): IntentState {
   }
 }
 
-/** A guess is still worth showing until the intent is decided against, or retired. */
+/** A guess is still worth showing until the intent is decided otherwise, or retired. */
 function hasCandidate(state: IntentState) {
-  return state.status !== 'needs-attention';
+  return state.status !== 'decided' || state.outcome === 'accepted';
+}
+
+/**
+ * A stored intent in today's shape. Schema 1 had two final states, `done` and
+ * `needs-attention`; schema 2 has one, `decided`, with how it ended.
+ */
+function upcast(stored: Intent): Intent {
+  if (stored.schema === 2) return stored;
+  const state = stored.state as unknown as
+    | { status: 'done'; doneAt: number }
+    | { status: 'needs-attention'; failure: Failure }
+    | IntentState;
+  const upcasted: IntentState =
+    state.status === 'done'
+      ? { status: 'decided', decidedAt: state.doneAt, outcome: 'accepted' }
+      : state.status === 'needs-attention'
+        ? { status: 'decided', decidedAt: Date.now(), outcome: 'declined', failure: state.failure }
+        : state;
+  return { ...stored, state: upcasted, schema: 2 };
 }
 
 // WHY only a 4xx (other than 401) is final: it's the server deciding. No response, a 5xx,
@@ -421,5 +448,10 @@ function stateForError(error: HttpErrorResponse): IntentState {
       failure: { remedy: 'try-again', status: error.status, detail },
     };
   }
-  return { status: 'needs-attention', failure: { remedy: 'no', status: error.status, detail } };
+  return {
+    status: 'decided',
+    decidedAt: Date.now(),
+    outcome: 'declined',
+    failure: { remedy: 'no', status: error.status, detail },
+  };
 }

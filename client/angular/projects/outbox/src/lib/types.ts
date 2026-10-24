@@ -26,16 +26,14 @@ export interface Intent<TPayload = unknown> {
   /** When the user asked. Epoch ms. */
   readonly requestedAt: number;
   readonly state: IntentState;
-  /** Shape version of this record, so stored intents can be upcast later. */
-  readonly schema: 1;
+  /** Shape version of this record, so stored intents can be upcast (see `upcast`). */
+  readonly schema: 2;
 }
 
 /**
  * Where an intent is in its life: the worksheet's Part 2 diagram.
  *
- *   requested ─► sent ─► received ─► done
- *                    │         │
- *                    │         └─► needs-attention   (decided against: final)
+ *   requested ─► sent ─► received ─► decided   (final: accepted, declined, or withdrawn)
  *                    ├─► unknown                     (no answer in time)
  *                    └─► interrupted                 (nothing decided: send again, same id)
  *
@@ -46,8 +44,19 @@ export type IntentState =
   | { readonly status: 'sent'; readonly sentAt: number }
   | { readonly status: 'unknown'; readonly sentAt: number }
   | { readonly status: 'received'; readonly receivedAt: number }
-  | { readonly status: 'done'; readonly doneAt: number }
-  | { readonly status: 'needs-attention'; readonly failure: Failure }
+  | { readonly status: 'decided'; readonly decidedAt: number; readonly outcome: 'accepted' }
+  /** Decided against. The apology's remedy is `no`. */
+  | {
+      readonly status: 'decided';
+      readonly decidedAt: number;
+      readonly outcome: 'declined';
+      readonly failure: Failure;
+    }
+  /**
+   * The person took it back before it was decided (a cancel that got there first). Nothing
+   * is owed, so the outbox lets it go as soon as it's announced.
+   */
+  | { readonly status: 'decided'; readonly decidedAt: number; readonly outcome: 'withdrawn' }
   /**
    * Nothing was decided and nothing is in flight: no response, a 5xx, or a 401. Not
    * final. It goes again with the same id (PROTOCOL: Remedies).
@@ -104,9 +113,11 @@ export interface IntentRequest {
   readonly body?: unknown;
 }
 
-/** What finally happened, as a status check or the server's event stream reports it. */
+/** How it ended, as a status check or the server's event stream reports it (PROTOCOL §3). */
 export type Outcome =
-  { readonly status: 'done' } | { readonly status: 'needs-attention'; readonly detail?: string };
+  | { readonly outcome: 'accepted' }
+  | { readonly outcome: 'declined'; readonly detail?: string }
+  | { readonly outcome: 'withdrawn' };
 
 /**
  * How to ask the server what became of an intent (PROTOCOL §2). Declared per type,
@@ -147,8 +158,8 @@ export interface IntentType<TPayload, TCandidate = never, TStatus = unknown> {
   readonly status?: StatusCheck<TPayload, TStatus>;
   /**
    * Optional: the reads this intent makes stale (read keys, PROTOCOL §3), announced when
-   * the server has recorded it: `received`, `done`, or `needs-attention` after being
-   * received. The same keys the server would send in `invalidate`, for this tab, at once.
+   * the server has recorded it: `received`, or `decided` (but a decision against only
+   * after being received). The same keys the server would send in `invalidate`, for this tab, at once.
    */
   invalidates?(intent: Intent<TPayload>): readonly string[];
 }

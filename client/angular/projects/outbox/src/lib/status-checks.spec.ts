@@ -26,9 +26,9 @@ const placeHold = defineIntentType<{ title: string }, never, Hold>({
     url: (intent) => `/holds/${intent.id}`,
     outcome: (hold) =>
       hold.status === 'placed'
-        ? { status: 'done' }
+        ? { outcome: 'accepted' }
         : hold.status === 'rejected'
-          ? { status: 'needs-attention', detail: hold.reason ?? undefined }
+          ? { outcome: 'declined', detail: hold.reason ?? undefined }
           : undefined,
   },
 });
@@ -47,8 +47,11 @@ function received({ store, http }: ReturnType<typeof setup>) {
   return intent;
 }
 
-const statusOf = (store: ReturnType<typeof setup>['store'], id: string) =>
-  store.entityMap()[id]?.state.status;
+/** The state, or for a decided intent, how it ended. */
+const statusOf = (store: ReturnType<typeof setup>['store'], id: string) => {
+  const state = store.entityMap()[id]?.state;
+  return state?.status === 'decided' ? state.outcome : state?.status;
+};
 
 describe('status checks (PROTOCOL §2)', () => {
   afterEach(() => vi.useRealTimers());
@@ -62,7 +65,7 @@ describe('status checks (PROTOCOL §2)', () => {
       .expectOne(`/holds/${intent.id}`)
       .flush({ id: intent.id, status: 'placed', reason: null });
 
-    expect(statusOf(ctx.store, intent.id)).toBe('done');
+    expect(statusOf(ctx.store, intent.id)).toBe('accepted');
   });
 
   it("a rejected hold needs attention, and the apology can say the server's reason", () => {
@@ -74,7 +77,7 @@ describe('status checks (PROTOCOL §2)', () => {
       .expectOne(`/holds/${intent.id}`)
       .flush({ id: intent.id, status: 'rejected', reason: 'You already have 3 holds, the limit' });
 
-    expect(statusOf(ctx.store, intent.id)).toBe('needs-attention');
+    expect(statusOf(ctx.store, intent.id)).toBe('declined');
     expect(ctx.store.apologies()[0].message).toBe(
       "We couldn't place a hold on Dune: You already have 3 holds, the limit.",
     );
@@ -123,22 +126,22 @@ describe('status checks (PROTOCOL §2)', () => {
     stillSendingPut.flush(null, { status: 202, statusText: 'Accepted' });
   });
 
-  it('conformance 9: once needs-attention, a later "done" from a status check changes nothing', () => {
+  it('conformance 9: once declined, a later "accepted" from a status check changes nothing', () => {
     const ctx = setup();
     const intent = received(ctx);
-    ctx.store.settle(intent.id, { status: 'needs-attention', detail: 'No.' });
+    ctx.store.settle(intent.id, { outcome: 'declined', detail: 'No.' });
 
     ctx.store.checkStatus(intent.id);
     ctx.http
       .expectOne(`/holds/${intent.id}`)
       .flush({ id: intent.id, status: 'placed', reason: null });
 
-    expect(statusOf(ctx.store, intent.id)).toBe('needs-attention');
+    expect(statusOf(ctx.store, intent.id)).toBe('declined');
   });
 
   it('conformance 10: a decision about an intent this client never held is ignored', () => {
     const { store } = setup();
-    expect(() => store.settle('not-ours', { status: 'done' })).not.toThrow();
+    expect(() => store.settle('not-ours', { outcome: 'accepted' })).not.toThrow();
     expect(store.entities()).toEqual([]);
   });
 });

@@ -69,8 +69,8 @@ describe('declared invalidation (the client half of the symmetry)', () => {
     const refused = store.enqueue(placeHold, payload);
     http.expectOne(`/holds/${refused.id}`).flush(null, { status: 202, statusText: 'Accepted' });
 
-    store.settle(placed.id, { status: 'done' });
-    store.settle(refused.id, { status: 'needs-attention', detail: 'No.' });
+    store.settle(placed.id, { outcome: 'accepted' });
+    store.settle(refused.id, { outcome: 'declined', detail: 'No.' });
 
     expect(announced.length).toBe(4);
   });

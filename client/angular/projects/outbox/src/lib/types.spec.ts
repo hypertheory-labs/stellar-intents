@@ -40,7 +40,7 @@ const intent: Intent<PlaceHold> = {
   payload: { titleId: 1001, title: 'Dune', branchCode: 'NOR' },
   requestedAt: Date.UTC(2026, 9, 14, 15, 0),
   state: { status: 'unknown', sentAt: Date.UTC(2026, 9, 14, 15, 0, 1) },
-  schema: 1,
+  schema: 2,
 };
 
 describe('outbox types', () => {

@@ -42,8 +42,11 @@ function setup() {
   return { store, http, seen };
 }
 
-const statusOf = (store: ReturnType<typeof setup>['store'], id: string) =>
-  store.entityMap()[id]?.state.status;
+/** The state, or for a decided intent, how it ended. */
+const statusOf = (store: ReturnType<typeof setup>['store'], id: string) => {
+  const state = store.entityMap()[id]?.state;
+  return state?.status === 'decided' ? state.outcome : state?.status;
+};
 
 describe('OutboxStore', () => {
   afterEach(() => vi.useRealTimers());
@@ -59,16 +62,16 @@ describe('OutboxStore', () => {
     expect(statusOf(store, intent.id)).toBe('sent');
   });
 
-  it('requested → sent → done, publishing an event at each step', () => {
+  it('requested → sent → decided (accepted), publishing an event at each step', () => {
     const { store, http, seen } = setup();
     const intent = store.enqueue(placeHold, dune);
     http.expectOne(`/holds/${intent.id}`).flush({}, { status: 201, statusText: 'Created' });
 
-    expect(statusOf(store, intent.id)).toBe('done');
+    expect(statusOf(store, intent.id)).toBe('accepted');
     expect(seen).toEqual([
       '[Outbox] intentRequested',
       '[Outbox] intentSent',
-      '[Outbox] intentDone',
+      '[Outbox] intentDecided',
     ]);
   });
 
@@ -78,8 +81,8 @@ describe('OutboxStore', () => {
     http.expectOne(`/holds/${intent.id}`).flush(null, { status: 202, statusText: 'Accepted' });
 
     expect(statusOf(store, intent.id)).toBe('received');
-    store.resolve(intent.id, { status: 'done' });
-    expect(statusOf(store, intent.id)).toBe('done');
+    store.resolve(intent.id, { outcome: 'accepted' });
+    expect(statusOf(store, intent.id)).toBe('accepted');
   });
 
   it('a rejection needs attention, and its apology is the declared one', () => {
@@ -89,11 +92,11 @@ describe('OutboxStore', () => {
       .expectOne(`/holds/${intent.id}`)
       .flush({ detail: 'Hold limit reached' }, { status: 409, statusText: 'Conflict' });
 
-    expect(statusOf(store, intent.id)).toBe('needs-attention');
+    expect(statusOf(store, intent.id)).toBe('declined');
     expect(store.apologies()).toEqual([
       {
         intentId: intent.id,
-        status: 'needs-attention',
+        status: 'decided',
         remedy: 'no',
         message: "We couldn't place a hold on Dune.",
         actions: ['retry'],
@@ -112,9 +115,9 @@ describe('OutboxStore', () => {
 
   // Sorted by what the person can do next. Only a decision (a 4xx other than 401) is final.
   it.each([
-    [409, 'needs-attention', 'no'],
-    [422, 'needs-attention', 'no'],
-    [403, 'needs-attention', 'no'],
+    [409, 'declined', 'no'],
+    [422, 'declined', 'no'],
+    [403, 'declined', 'no'],
     [401, 'interrupted', 'sign-in'],
     [500, 'interrupted', 'try-again'],
     [503, 'interrupted', 'try-again'],
@@ -147,8 +150,8 @@ describe('OutboxStore', () => {
     const intent = store.enqueue(placeHold, dune);
     http.expectOne(`/holds/${intent.id}`).flush(null, { status: 500, statusText: 'Error' });
 
-    store.resolve(intent.id, { status: 'done' });
-    expect(statusOf(store, intent.id)).toBe('done');
+    store.resolve(intent.id, { outcome: 'accepted' });
+    expect(statusOf(store, intent.id)).toBe('accepted');
   });
 
   it('a decided intent is not resent', () => {
@@ -181,7 +184,7 @@ describe('OutboxStore', () => {
     expect(store.apologies()[0].message).toBe("We're not sure your hold on Dune went through.");
 
     req.flush({}, { status: 201, statusText: 'Created' });
-    expect(statusOf(store, intent.id)).toBe('done');
+    expect(statusOf(store, intent.id)).toBe('accepted');
     expect(store.apologies()).toEqual([]);
   });
 
@@ -192,10 +195,10 @@ describe('OutboxStore', () => {
     const req = http.expectOne(`/holds/${intent.id}`);
 
     vi.advanceTimersByTime(5_000); // unknown
-    store.resolve(intent.id, { status: 'done' }); // the server told us some other way
+    store.resolve(intent.id, { outcome: 'accepted' }); // the server told us some other way
     req.flush(null, { status: 202, statusText: 'Accepted' }); // the PUT's answer, late
 
-    expect(statusOf(store, intent.id)).toBe('done');
+    expect(statusOf(store, intent.id)).toBe('accepted');
     expect(seen.filter((t) => t === '[Outbox] intentReceived')).toEqual([]);
   });
 

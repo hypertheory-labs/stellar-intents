@@ -20,7 +20,7 @@ const placeHold = defineIntentType<{ title: string }, never, Hold>({
   apology: { say: () => 'Sorry.', actions: [] },
   status: {
     url: (intent) => `/holds/${intent.id}`,
-    outcome: (hold) => (hold.status === 'placed' ? { status: 'done' } : undefined),
+    outcome: (hold) => (hold.status === 'placed' ? { outcome: 'accepted' } : undefined),
   },
 });
 
@@ -44,7 +44,7 @@ function setup(storage: IntentStorage = memoryIntentStorage()) {
 const settled = () => new Promise((resolve) => setTimeout(resolve));
 
 function stored(id: string, state: IntentState): Intent {
-  return { id, type: 'place-hold', payload: { title: 'Dune' }, requestedAt: 1, state, schema: 1 };
+  return { id, type: 'place-hold', payload: { title: 'Dune' }, requestedAt: 1, state, schema: 2 };
 }
 
 describe('durability (PROTOCOL: Durability, proposed)', () => {
@@ -118,7 +118,7 @@ describe('durability (PROTOCOL: Durability, proposed)', () => {
     const check = http.expectOne(`/holds/a`);
     expect(check.request.method).toBe('GET');
     check.flush({ id: 'a', status: 'placed', reason: null });
-    expect(store.entityMap()['a'].state.status).toBe('done');
+    expect(store.entityMap()['a'].state).toMatchObject({ status: 'decided', outcome: 'accepted' });
     http.verify(); // no PUT
   });
 
@@ -139,21 +139,45 @@ describe('durability (PROTOCOL: Durability, proposed)', () => {
 
   it('restores a decided intent as it was, without asking', async () => {
     const storage = memoryIntentStorage();
-    await storage.save('P1', stored('a', { status: 'done', doneAt: 5 }));
+    await storage.save('P1', stored('a', { status: 'decided', decidedAt: 5, outcome: 'accepted' }));
     const { store, http } = setup(storage);
 
     await store.restore('P1');
-    expect(store.receipts().map((r) => [r.intentId, r.status])).toEqual([['a', 'done']]);
+    expect(store.receipts().map((r) => [r.intentId, r.status])).toEqual([['a', 'decided']]);
     http.verify();
   });
 
   it("skips a stored intent whose type this build doesn't register", async () => {
     const storage = memoryIntentStorage();
-    await storage.save('P1', { ...stored('a', { status: 'done', doneAt: 5 }), type: 'gone' });
+    await storage.save('P1', {
+      ...stored('a', { status: 'decided', decidedAt: 5, outcome: 'accepted' }),
+      type: 'gone',
+    });
     const { store } = setup(storage);
 
     await store.restore('P1');
     expect(store.entities()).toEqual([]);
+  });
+
+  it('upcasts an intent stored by an older build (schema 1: done, needs-attention)', async () => {
+    const storage = memoryIntentStorage();
+    const old = (id: string, state: unknown) =>
+      ({ ...stored(id, { status: 'requested' }), state, schema: 1 }) as unknown as Intent;
+    await storage.save('P1', old('a', { status: 'done', doneAt: 5 }));
+    await storage.save('P1', old('b', { status: 'needs-attention', failure: { remedy: 'no' } }));
+    const { store, http } = setup(storage);
+
+    await store.restore('P1');
+    expect(store.entityMap()['a']).toMatchObject({
+      schema: 2,
+      state: { status: 'decided', decidedAt: 5, outcome: 'accepted' },
+    });
+    expect(store.entityMap()['b'].state).toMatchObject({
+      status: 'decided',
+      outcome: 'declined',
+      failure: { remedy: 'no' },
+    });
+    http.verify();
   });
 });
 

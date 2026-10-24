@@ -148,7 +148,7 @@ describe('the event stream (PROTOCOL §3)', () => {
     expect(ctx.store.apologies()[0].message).toBe('You already have 3 holds, the limit.');
   });
 
-  // docs/intents/holds.md: a cancel that got there before the decision
+  // tmp/holds-in-irmto.md: a cancel that got there before the decision
   it('withdrawn lets the intent go: no apology, no guess, nothing left to show', () => {
     const ctx = setup();
     const intent = received(ctx);

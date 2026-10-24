@@ -50,7 +50,7 @@ public class EventStreamTests(AppFixture app)
         decided.GetProperty("outcome").GetString().ShouldBe("accepted");
     }
 
-    [Fact] // docs/intents/holds.md: a cancel that overtakes the placement
+    [Fact] // tmp/holds-in-irmto.md: a cancel that overtakes the placement
     public async Task a_hold_cancelled_before_its_decision_is_withdrawn()
     {
         var patron = HoldsApi.NewPatron();

@@ -1,6 +1,6 @@
 # Intent wire protocol
 
-**Draft 0.2, 2026-10-23.** How a browser and an API agree about who's asking, about
+**Draft 0.3, 2026-10-24.** How a browser and an API agree about who's asking, about
 commands the user asked for, and about reads that have gone stale. Framework-neutral:
 this page is the contract; the Angular `outbox` library and the Wolverine/Fisher backend
 in this repo are one implementation of each side.
@@ -9,11 +9,8 @@ If you're building a client for this protocol (in any framework), read
 [The client](#the-client) and [Conformance scenarios](#conformance-scenarios). If you're
 building a server, read [The server](#the-server). Everyone reads [Vocabulary](#vocabulary).
 
-Each section is marked, and a bullet that differs from its section carries its own
-marker:
-
-- **[Implemented]**: the reference backend and Angular app do this today.
-- **[Proposed]**: designed, not built yet. Expect it to change.
+**Everything here is built**: the reference server and the Angular client do it today.
+Ideas that aren't built live in [`tmp/`](../tmp), until they are or until they're dropped.
 
 ---
 
@@ -33,20 +30,15 @@ marker:
 
 ---
 
-## Intent lifecycle [Implemented]
+## Intent lifecycle
 
 The states a client keeps for each intent. The wire carries only what the server knows;
 these states are how a client turns that into something true to say. Remedies,
 durability, and the conformance scenarios are all written in terms of them.
 
-Grouped by **phase**: who has the request. Moving between boxes is custody changing
-hands. **[Proposed]** That's when a receipt should change: one receipt per phase, its
-words chosen by the business, not one per state. (Today a receipt is one sentence per
-intent type, and it isn't true in every state.)
-
 ```mermaid
 stateDiagram-v2
-    state "With us (this browser)" as us {
+    state "In this browser" as us {
         [*] --> requested
         requested --> sent: at once
         sent --> unknown: no answer in time
@@ -54,7 +46,7 @@ stateDiagram-v2
         unknown --> interrupted: late 5xx
         interrupted --> sent: again, same id
     }
-    state "With them (the server has it)" as them {
+    state "At the server" as them {
         [*] --> received
     }
     state "Decided (final)" as decided {
@@ -91,23 +83,10 @@ Every state has a receipt.
   the cancel gets there first, the first intent's outcome is `withdrawn`, and nothing is
   owed: no receipt, guess, or apology. If the decision gets there first, the first intent
   is decided as usual, and the cancel acts on whatever it became.
-  - **[Proposed]** Nothing on the wire says which intent a cancel overtakes. Today a
-    client can only tell when the intent created the thing being cancelled (the same
-    id), and until the server's `withdrawn` arrives, the first intent's guess can come
-    back.
-  - **[Proposed]** "Never mind" *before* it left this browser needs no wire at all. No
-    client offers it yet.
-- **[Proposed]** Changes the phases suggest:
-  - **With them, stuck:** `received` past the time the server promised (a `202` with
-    `Retry-After`). The receipt's "you'll hear back within a minute" has lapsed.
-  - **With them, needs a person:** the server can't decide without its own staff (a
-    dead-lettered message). Nothing on the wire can say so today. It needs its own
-    event, and its remedy is an offer: "let's talk." It isn't final; a person will decide.
-    (This is what "needs attention" should have meant all along.)
 
 ---
 
-## 0. Identity [Implemented]
+## 0. Identity
 
 Who the user is never travels in a URL or a payload the client composes. The reference
 server does all of this, with a Development-only cookie sign-in standing in for a real
@@ -123,21 +102,18 @@ identity provider.
   `GET /session`, always `200`, with the answer in the body). `EventSource` can't tell a
   `401` from a server that went away, so when the stream drops, a client asks this
   before reconnecting, and stops reconnecting if it's signed out.
-- **[Proposed]** When signed in, the session's answer also says **who**: an id for the
-  user that stays the same across sessions (the reference: `patronId`). A client that
-  stores intents stamps each one with it ([Durability](#durability-proposed)). It's only
+- When signed in, the session's answer also says **who**: an id for the user that stays
+  the same across sessions (the reference: `patronId`). A client that stores intents
+  stamps each one with it ([Durability](#durability)). It's only
   a label for sorting stored intents; the server never trusts it from the client.
 - **Unsafe requests without an `Idempotency-Key` are rejected** (`400`, problem+json).
   §1 already requires the header. Enforcing it also makes it a CSRF defence: a custom
   header can't cross origins without a preflight. With `SameSite=Strict`, that's all of
   it, with no antiforgery token. (Reasoned, not yet reviewed by a security person.)
-- **[Proposed]** The server **MAY** close the stream at any time, including when the
-  user's access token expires. The reconnect goes back through whatever refreshes the
-  session, or comes back `401`.
 
 ---
 
-## 1. Commands [Implemented]
+## 1. Commands
 
 ### Request
 
@@ -203,7 +179,7 @@ Errors are [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) `application/probl
 
 ---
 
-## 2. Status checks [Implemented]
+## 2. Status checks
 
 For an intent stuck in `received` or `unknown`, the client can always ask:
 
@@ -225,7 +201,7 @@ enhancement: a client that never opens it must still reach every outcome.
 
 ---
 
-## 3. The event stream [Implemented]
+## 3. The event stream
 
 One [Server-Sent Events](https://html.spec.whatwg.org/multipage/server-sent-events.html)
 stream per user, carrying outcomes and invalidations as they happen.
@@ -323,16 +299,13 @@ stale and refetches the ones on screen.
 
 ---
 
-## 4. Reads [Implemented]
+## 4. Reads
 
 Plain `GET`s. The protocol adds only:
 
 - A read's **read key** is its path and query relative to the API root.
 - Representations **SHOULD** carry an `ETag` (the version). (The reference does this for
   single resources, not for collections.)
-- **[Proposed]** The server **MAY** send `Cache-Control` (e.g.
-  `max-age=30, stale-while-revalidate=300`) for reads that tolerate it. The browser's own
-  cache then serves stale-first for free.
 - Collections **MUST** include the ids of items created by commands, so the client can
   see a candidate's real version arrive (and retire the intent).
 
@@ -366,12 +339,12 @@ What a conforming client has, in any framework. Names are suggestions.
    isn't in memory yet, candidates first, with candidates visibly marked as guesses. When
    an accepted intent's id appears in memory, retire the intent.
 8. **Storage (optional).** Keeps intents across page loads. See
-   [Durability](#durability-proposed).
+   [Durability](#durability).
 
 A client **MUST NOT** write candidates into memory (or the read cache). Because it never
 does, it never has to roll anything back.
 
-### Remedies [Implemented]
+### Remedies
 
 An apology is sorted by **what the person can do next**, not by what went wrong
 underneath. The reasons belong to the business (a five-minute window for some customers,
@@ -385,35 +358,14 @@ can:
 | `no`        | Any other `4xx`, or a decision against. Why is the problem's `detail`. |
 | `sign-in`   | `401` (`interrupted`): the session has ended. Same id, once signed in. |
 
-Today a status code is enough to choose one. A remedy that needs more (below) will be a
-problem+json `type`: the countable part, for a machine. `detail` stays the part for a
-person.
-
-**[Proposed]** More remedies, each waiting on something:
-
-- `look-again`: the reads the intent was based on have changed; here's what changed.
-  Needs intents to say what they were based on (read keys and ETags), and a problem
-  `type`. Whether the server rejects, or accepts anyway within some window, is the
-  business's policy, never the protocol's.
-- `still-want-it`: a stored intent too old to send ([Durability](#durability-proposed)).
+A status code is enough to choose one.
 
 **Who acts on a remedy.** A client **MAY** act on a same-id remedy by itself:
 `try-again` when the server is reachable again (the reference: on `subscribed`), `wait`
 through status checks. It **MUST NOT** do so for an intent restored from storage, because
 that request may no longer mean what the person meant. That one waits for the person.
 
-**[Proposed]** The principle behind it, and what follows:
-
-> The client may deliver what the person asked for, as many times as it takes, while it
-> still means what they meant. It may never ask for something new on their behalf.
-
-- Every remedy that needs a **new** id (`no`, `look-again`) needs the person, because a
-  new id is a new request.
-- While a remedy is being handled automatically, there's nothing to apologise for yet:
-  "we'll keep trying" is a receipt. It becomes an apology when the automation gives up,
-  or when it's the person's turn. (The reference still shows these as apologies.)
-
-### Durability [Proposed]
+### Durability
 
 An intent belongs to **this browser** until the server first answers it, and to the
 **server** after that. Storing intents (IndexedDB, say) only stretches the first window
@@ -423,23 +375,13 @@ came, and nobody knows whether it went.
 
 A client that stores intents:
 
-- **[Implemented]** **MUST** store the intent before sending it. Otherwise a tab that
-  closes mid-send leaves nothing to check.
-- **[Implemented]** **MUST** record whose intent it is (the session's user, §0), and
-  **MUST NOT** send or check an intent for anyone else.
-- On sign-out it **SHOULD** delete that user's stored intents, because the computer may
-  be shared.
-- **[Implemented]** After a reload, **MUST** status-check (§2) every stored intent that
-  was `sent`, `received`, or `unknown` before resending anything. A restored `sent`
-  intent is `unknown`: nothing from the old page is in flight.
-- Resend (same id) only when that check answers `404`.
-- **MUST NOT** send a stored intent that was never answered once it's older than its
-  intent type says a request stays good. Ask the person instead. Acting on yesterday's
-  request is acting for someone whose situation may have changed.
-- **SHOULD** let only one tab act on a stored intent at a time. Two sends are safe on the
-  server (§1), but the person should see one receipt.
-- **SHOULD** word the receipt of an unanswered intent as "saved on this device", not
-  "saved". Storage can be cleared, and an intent nobody remembers can't be apologised for.
+- **MUST** store the intent before sending it. Otherwise a tab that closes mid-send leaves
+  nothing to check.
+- **MUST** record whose intent it is (the session's user, §0), and **MUST NOT** send or
+  check an intent for anyone else.
+- After a reload, **MUST** status-check (§2) every stored intent that was `sent`,
+  `received`, or `unknown`, and resends nothing. A restored `sent` intent is `unknown`:
+  nothing from the old page is in flight.
 
 ---
 
@@ -509,17 +451,12 @@ implementation can be checked without reading the reference code.
     one keeps its candidate: nothing has been decided.
 18. An accepted intent whose id is in memory is retired.
 
-**Durability [Proposed]** (19 and 21 are implemented; 20, 22 and 23 aren't built)
+**Durability**
 
 19. An intent is `sent` and the page reloads before the answer; the server had recorded
     it → after the reload, a status check reaches its outcome, and nothing is resent.
-20. As 19, but the server never got it (status check: `404`) → resent with the same id.
-21. Pat has a stored intent; Pat signs out and Sam signs in on the same browser →
+20. Pat has a stored intent; Pat signs out and Sam signs in on the same browser →
     nothing is sent or checked for Pat's intent.
-22. A stored intent that was never answered is older than its type's limit → it isn't
-    sent; the person is asked.
-23. Two tabs open with the same stored intent → one request goes out, and one receipt
-    shows.
 
 ---
 
@@ -529,7 +466,7 @@ implementation can be checked without reading the reference code.
   user's other browsers until the server has it, and even then only a create can be
   found again (by its id). Finding other intents needs a server-side record of intents,
   which is undecided. How a client stores intents is its own business; what storing them
-  may promise is in [Durability](#durability-proposed).
+  may promise is in [Durability](#durability).
 - **Ordering between intents.** Every intent is independent. If two must apply in order,
   that's a single command, or a per-type queue in the client.
 - **Replay.** Deliberately left out; see the `subscribed` rule.

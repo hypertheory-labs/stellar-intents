@@ -122,8 +122,8 @@ describe('durability (PROTOCOL: Durability, proposed)', () => {
     http.verify(); // no PUT
   });
 
-  // conformance 20, for now: the server never got it. Resending is a later step; until then
-  // it stays unknown, and its apology says so.
+  // the server never got it. Resending on a 404 isn't built (tmp/protocol-proposed.md);
+  // until then it stays unknown, and its apology says so.
   it('leaves a restored intent unknown when the server never got it', async () => {
     const storage = memoryIntentStorage();
     await storage.save('P1', stored('a', { status: 'sent', sentAt: 5 }));
@@ -218,7 +218,7 @@ describe('provideIntentStorage', () => {
     return { store: TestBed.inject(OutboxStore), http: TestBed.inject(HttpTestingController) };
   }
 
-  // conformance 21: Pat's stored intent, Sam signs in -> nothing sent or checked for Pat
+  // conformance 20: Pat's stored intent, Sam signs in -> nothing sent or checked for Pat
   it("asks the session who's signed in, and restores only their intents", async () => {
     const storage = memoryIntentStorage();
     await storage.save('PAT', stored('pats', { status: 'sent', sentAt: 5 }));

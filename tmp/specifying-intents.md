@@ -1,8 +1,8 @@
 # Specifying an intent
 
 **Draft, 2026-10-23.** A way to write down what an intent needs, so a business can answer
-it and a test can run it. Not part of the [protocol](PROTOCOL.md) yet. Tried on the
-reference domain in [`intents/holds.md`](intents/holds.md), where it found a bug.
+it and a test can run it. Not part of the [protocol](../docs/PROTOCOL.md) yet. Tried on the
+reference domain in [`holds-in-irmto.md`](holds-in-irmto.md), where it found a bug.
 
 ## The whole idea in three sentences
 

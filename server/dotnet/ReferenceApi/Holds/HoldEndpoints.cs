@@ -157,7 +157,7 @@ public static class EvaluateHoldHandler
 
         // The patron cancelled it before it was decided. The place-hold intent still needs an
         // outcome, or the client waits for one forever (found by writing both intents in IRMTO
-        // form: docs/intents/holds.md).
+        // form: tmp/holds-in-irmto.md).
         if (hold.Status == HoldStatus.Cancelled)
         {
             messages.Add(new IntentDecided(hold.PatronId, hold.Id, IntentOutcome.Withdrawn, CancelledFirst));

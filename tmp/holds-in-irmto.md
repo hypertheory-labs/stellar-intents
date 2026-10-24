@@ -1,7 +1,7 @@
 # The reference domain's intents, specified
 
 **2026-10-23.** The two intents the reference already has, written in the
-[IRMTO form](../SPECIFYING-INTENTS.md) and then checked against the code. Each line says
+[IRMTO form](specifying-intents.md) and then checked against the code. Each line says
 where it lives, or ⚠ when it has nowhere to live. An experiment: does the form find
 things the code hides?
 

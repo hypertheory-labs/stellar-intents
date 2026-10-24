@@ -2,7 +2,7 @@
 
 **2026-10-24. Spec only; nothing is built.** Holds barely has a basis: who's asking, and
 a count. This domain's intent rests on a price, which can change underneath it
-materially or not. Written in the [IRMTO form](../SPECIFYING-INTENTS.md) before any code,
+materially or not. Written in the [IRMTO form](specifying-intents.md) before any code,
 with **roles** instead of people, to see whether that reads better.
 
 The business answers are **invented**, to show the shape. They aren't any insurer's.

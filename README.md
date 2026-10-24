@@ -29,10 +29,10 @@ This is a guess about where we are, not a settled design.
    the counter, is the open question.
 3. **Something on top of Wolverine and Marten.** The wire is specified on its own
    ([the protocol](docs/PROTOCOL.md)), so any client and server can meet. But the part
-   worth offering is probably a layer for the Edge: *we keep the person's browser
+   worth offering is probably a layer for the Edge: _we keep the person's browser
    informed, track sessions and pending intents, and deliver receipts and apologies; you
-   plug in what happens when.* Its shape is unknown.
-4. **A way to specify intents.** [IRMTO](docs/SPECIFYING-INTENTS.md) (Intent, Rests on,
+   plug in what happens when._ Its shape is unknown.
+4. **A way to specify intents.** [IRMTO](tmp/specifying-intents.md) (Intent, Rests on,
    Manifests when, Then, Otherwise) is a way to write down how to be that clerk, when
    twenty years of ACID trained us to be the other guy. Maybe one day it's executable,
    for people and AIs to iterate on.
@@ -42,15 +42,14 @@ problem details, `ETag`) and Server-Sent Events, with conventions written down.
 
 ## What's here, and how far along
 
-| Path                                                                     | What                                                                                                    | Status                                    |
-| ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
-| [`docs/PROTOCOL.md`](docs/PROTOCOL.md)                                   | The intent wire protocol: commands, status checks, the event stream, reads, conformance scenarios.      | Draft 0.2                                 |
-| [`docs/SPECIFYING-INTENTS.md`](docs/SPECIFYING-INTENTS.md)               | IRMTO: how to specify an intent.                                                                        | Draft                                     |
-| [`docs/intents/`](docs/intents)                                          | Intents specified that way: library holds (built), and quote → bind (specified, not built).             | Holds built; quotes spec only             |
-| [`server/dotnet/ReferenceApi`](server/dotnet/ReferenceApi)               | A reference server: library holds on Wolverine + Fisher (event-sourced, SQLite), .NET 10.               | Protocol §0–3, tested. **No Edge yet.**   |
-| [`client/angular/projects/outbox`](client/angular/projects/outbox)       | The browser's half: intents, receipts, candidates, apologies; the event stream; a read cache.           | Tested; intents stored in IndexedDB       |
-| [`client/angular/projects/demo`](client/angular/projects/demo)           | A small holds page, for sanity checks against the server.                                               | Runnable                                  |
-| [`examples/angular-holds`](examples/angular-holds)                       | A page from the course these ideas came out of.                                                         | Reference code, not runnable here         |
+| Path                                                               | What                                                                                                                  | Status                                  |
+| ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------- | --------------------------------------- |
+| [`docs/PROTOCOL.md`](docs/PROTOCOL.md)                             | The intent wire protocol: commands, status checks, the event stream, reads, conformance scenarios. Only what's built. | Draft 0.3                               |
+| [`tmp/`](tmp)                                                      | Ideas not built yet: IRMTO, quote → bind, the protocol's proposed parts. Not decisions.                               | Speculative                             |
+| [`server/dotnet/ReferenceApi`](server/dotnet/ReferenceApi)         | A reference server: library holds on Wolverine + Fisher (event-sourced, SQLite), .NET 10.                             | Protocol §0–3, tested. **No Edge yet.** |
+| [`client/angular/projects/outbox`](client/angular/projects/outbox) | The browser's half: intents, receipts, candidates, apologies; the event stream; a read cache.                         | Tested; intents stored in IndexedDB     |
+| [`client/angular/projects/demo`](client/angular/projects/demo)     | A small holds page, for sanity checks against the server.                                                             | Runnable                                |
+| [`examples/angular-holds`](examples/angular-holds)                 | A page from the course these ideas came out of.                                                                       | Reference code, not runnable here       |
 
 The browser client got built first because there was a half-finished outbox to start
 from. The thinking has since moved to the Edge, and the code hasn't followed yet.
@@ -91,7 +90,7 @@ Not a roadmap, just the next questions:
 - **The weight of the Edge.** Does it know what an intent means (the clerk), or does it
   only check the basis and pass the command on (the counter)? Remedies, offers and
   apologies get written in whichever place the answer picks.
-- **Quote → bind**, the second domain, [specified before building](docs/intents/quotes.md).
+- **Quote → bind**, the second domain, [specified before building](tmp/quotes.md).
   It's the first one where the basis (a price) can change underneath an intent, and the
   first test of `supersedes`.
 - **What a basis names.** An ETag on a whole aggregate locks too much. A validator per

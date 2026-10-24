@@ -15,7 +15,12 @@ namespace ReferenceApi.Streaming;
   happen.
 */
 
-public enum IntentOutcome { Done, NeedsAttention }
+/// <summary>How an intent ended. Final either way.</summary>
+/// <remarks>
+/// Withdrawn: the person took it back before it was decided (here, a cancel that got there
+/// first). Not a decision against them, so the client owes no apology.
+/// </remarks>
+public enum IntentOutcome { Accepted, Declined, Withdrawn }
 
 /// <summary>An intent's outcome, for the user who asked.</summary>
 /// <param name="Audience">The patron to tell.</param>
@@ -36,7 +41,12 @@ public static class ProtocolMessageHandler
         hub.Publish(decided.Audience, "intent-decided", new
         {
             intentId = decided.IntentId,
-            outcome = decided.Outcome == IntentOutcome.Done ? "done" : "needs-attention",
+            outcome = decided.Outcome switch
+            {
+                IntentOutcome.Accepted => "accepted",
+                IntentOutcome.Declined => "declined",
+                _ => "withdrawn",
+            },
             detail = decided.Detail,
         });
 

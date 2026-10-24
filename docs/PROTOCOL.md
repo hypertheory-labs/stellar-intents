@@ -254,13 +254,13 @@ That rule replaces replay. It is always correct and far simpler than `Last-Event
 
 ```
 event: intent-decided
-data: {"intentId":"0b6e0c3e-…","outcome":"needs-attention","detail":"You already have 3 holds, the limit."}
+data: {"intentId":"0b6e0c3e-…","outcome":"declined","detail":"You already have 3 holds, the limit."}
 ```
 
 | Field      | Type                              | Notes                                                       |
 | ---------- | --------------------------------- | ----------------------------------------------------------- |
 | `intentId` | string (UUID)                     | The command's `Idempotency-Key`.                            |
-| `outcome`  | `"done"` \| `"needs-attention"`   |                                                             |
+| `outcome`  | `"accepted"` \| `"declined"` \| `"withdrawn"` | Withdrawn: the person took it back first (a cancel that got there before the decision). |
 | `detail`   | string, optional                  | User-presentable, same rules as a problem's `detail`.       |
 
 The client resolves the intent. If the intent is unknown to it (another tab, already

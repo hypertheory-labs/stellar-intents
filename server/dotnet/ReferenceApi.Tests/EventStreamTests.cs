@@ -35,7 +35,7 @@ public class EventStreamTests(AppFixture app)
     }
 
     [Fact]
-    public async Task a_placed_hold_is_an_intent_decided_done()
+    public async Task a_placed_hold_is_an_intent_decided_accepted()
     {
         var patron = HoldsApi.NewPatron();
         await using var stream = await EventStream.Open(_host, await _host.SignIn(patron));
@@ -47,11 +47,11 @@ public class EventStreamTests(AppFixture app)
 
         var decided = await stream.NextOf("intent-decided");
         decided.GetProperty("intentId").GetGuid().ShouldBe(id);
-        decided.GetProperty("outcome").GetString().ShouldBe("done");
+        decided.GetProperty("outcome").GetString().ShouldBe("accepted");
     }
 
     [Fact] // docs/intents/holds.md: a cancel that overtakes the placement
-    public async Task a_hold_cancelled_before_its_decision_still_gets_an_outcome()
+    public async Task a_hold_cancelled_before_its_decision_is_withdrawn()
     {
         var patron = HoldsApi.NewPatron();
         var cookie = await _host.SignIn(patron);
@@ -71,12 +71,12 @@ public class EventStreamTests(AppFixture app)
 
         var decided = await stream.NextOf("intent-decided");
         decided.GetProperty("intentId").GetGuid().ShouldBe(id);
-        decided.GetProperty("outcome").GetString().ShouldBe("needs-attention");
+        decided.GetProperty("outcome").GetString().ShouldBe("withdrawn");
         decided.GetProperty("detail").GetString().ShouldBe(EvaluateHoldHandler.CancelledFirst);
     }
 
     [Fact]
-    public async Task a_rejected_hold_is_needs_attention_with_the_reason()
+    public async Task a_rejected_hold_is_declined_with_the_reason()
     {
         var patron = HoldsApi.NewPatron();
         foreach (var title in new[] { 1001, 1005, 1006 })
@@ -94,7 +94,7 @@ public class EventStreamTests(AppFixture app)
 
         var decided = await stream.NextOf("intent-decided");
         decided.GetProperty("intentId").GetGuid().ShouldBe(fourth);
-        decided.GetProperty("outcome").GetString().ShouldBe("needs-attention");
+        decided.GetProperty("outcome").GetString().ShouldBe("declined");
         decided.GetProperty("detail").GetString().ShouldBe("You already have 3 holds, the limit.");
     }
 

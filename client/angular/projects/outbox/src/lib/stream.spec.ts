@@ -132,10 +132,10 @@ describe('the event stream (PROTOCOL §3)', () => {
     const placed = received(ctx);
     const refused = received(ctx);
 
-    ctx.latest().emit('intent-decided', { intentId: placed.id, outcome: 'done' });
+    ctx.latest().emit('intent-decided', { intentId: placed.id, outcome: 'accepted' });
     ctx.latest().emit('intent-decided', {
       intentId: refused.id,
-      outcome: 'needs-attention',
+      outcome: 'declined',
       detail: 'You already have 3 holds, the limit.',
     });
 
@@ -149,7 +149,7 @@ describe('the event stream (PROTOCOL §3)', () => {
     const intent = ctx.store.enqueue(placeHold, { title: 'Dune' });
     const put = ctx.http.expectOne(`/holds/${intent.id}`);
 
-    ctx.latest().emit('intent-decided', { intentId: intent.id, outcome: 'done' });
+    ctx.latest().emit('intent-decided', { intentId: intent.id, outcome: 'accepted' });
     put.flush(null, { status: 202, statusText: 'Accepted' });
 
     expect(statusOf(ctx.store, intent.id)).toBe('done');

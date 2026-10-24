@@ -146,9 +146,11 @@ function follow({
     opened.addEventListener('intent-decided', (event) => {
       const decided = parse<{ intentId: string; outcome: string; detail?: string | null }>(event);
       if (!decided) return;
+      // FOR NOW: `withdrawn` lands as needs-attention, as it did before it had a name. The
+      // client's own final state catches up in the next step.
       outbox.settle(
         decided.intentId,
-        decided.outcome === 'done'
+        decided.outcome === 'accepted'
           ? { status: 'done' }
           : { status: 'needs-attention', detail: decided.detail ?? undefined },
       );

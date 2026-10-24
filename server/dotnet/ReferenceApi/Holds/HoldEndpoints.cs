@@ -158,11 +158,9 @@ public static class EvaluateHoldHandler
         // The patron cancelled it before it was decided. The place-hold intent still needs an
         // outcome, or the client waits for one forever (found by writing both intents in IRMTO
         // form: docs/intents/holds.md).
-        // FOR NOW: needs-attention. PROTOCOL proposes a final outcome named for how it ended
-        // ("withdrawn"), and that name isn't chosen yet.
         if (hold.Status == HoldStatus.Cancelled)
         {
-            messages.Add(new IntentDecided(hold.PatronId, hold.Id, IntentOutcome.NeedsAttention, CancelledFirst));
+            messages.Add(new IntentDecided(hold.PatronId, hold.Id, IntentOutcome.Withdrawn, CancelledFirst));
             return messages;
         }
 
@@ -175,12 +173,12 @@ public static class EvaluateHoldHandler
             var reason = $"You already have {HoldLimit} holds, the limit.";
             session.Events.Append(hold.Id, new HoldRejected(hold.Id, reason, DateTimeOffset.UtcNow));
             // The hold's id is the intent's id: the client generated it (PROTOCOL §1).
-            messages.Add(new IntentDecided(hold.PatronId, hold.Id, IntentOutcome.NeedsAttention, reason));
+            messages.Add(new IntentDecided(hold.PatronId, hold.Id, IntentOutcome.Declined, reason));
         }
         else
         {
             session.Events.Append(hold.Id, new HoldPlaced(hold.Id, DateTimeOffset.UtcNow));
-            messages.Add(new IntentDecided(hold.PatronId, hold.Id, IntentOutcome.Done));
+            messages.Add(new IntentDecided(hold.PatronId, hold.Id, IntentOutcome.Accepted));
         }
 
         messages.AddRange(HoldKeys.Changed(hold));

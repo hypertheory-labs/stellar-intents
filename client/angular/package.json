@@ -4,8 +4,8 @@
   "private": true,
   "scripts": {
     "ng": "ng",
-    "build": "ng build outbox && ng build url-state",
-    "test": "ng test outbox --watch=false && ng test url-state --watch=false"
+    "build": "ng build outbox",
+    "test": "ng test outbox --watch=false"
   },
   "packageManager": "npm@11.19.0",
   "dependencies": {

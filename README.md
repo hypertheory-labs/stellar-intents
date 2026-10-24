@@ -50,7 +50,6 @@ problem details, `ETag`) and Server-Sent Events, with conventions written down.
 | [`server/dotnet/ReferenceApi`](server/dotnet/ReferenceApi)               | A reference server: library holds on Wolverine + Fisher (event-sourced, SQLite), .NET 10.               | Protocol §0–3, tested. **No Edge yet.**   |
 | [`client/angular/projects/outbox`](client/angular/projects/outbox)       | The browser's half: intents, receipts, candidates, apologies; the event stream; a read cache.           | Tested; intents stored in IndexedDB       |
 | [`client/angular/projects/demo`](client/angular/projects/demo)           | A small holds page, for sanity checks against the server.                                               | Runnable                                  |
-| [`client/angular/projects/url-state`](client/angular/projects/url-state) | The URL as a source of truth for Signal Store (`withRouter`, `withQueryParam`, `withMatrixParam`).      | Experimental, tested; not central         |
 | [`examples/angular-holds`](examples/angular-holds)                       | A page from the course these ideas came out of.                                                         | Reference code, not runnable here         |
 
 The browser client got built first because there was a half-finished outbox to start
@@ -75,13 +74,13 @@ curl -N -b jar http://localhost:5261/events
 
 Tests: `dotnet test server/dotnet`.
 
-**Angular** (the libraries, and the demo, which proxies `/api` to the server above):
+**Angular** (the outbox library, and the demo, which proxies `/api` to the server above):
 
 ```bash
 cd client/angular
 npm install
-npm test           # both libraries, once
-npm run build      # both libraries, to dist/
+npm test           # the outbox library, once
+npm run build      # the outbox library, to dist/
 npx ng serve demo  # the sanity-check page
 ```
 

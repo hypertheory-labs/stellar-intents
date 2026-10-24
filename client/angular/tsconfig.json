@@ -8,8 +8,7 @@
     "noPropertyAccessFromIndexSignature": true,
     "noImplicitReturns": true,
     "paths": {
-      "outbox": ["./projects/outbox/src/public-api.ts"],
-      "url-state": ["./projects/url-state/src/public-api.ts"]
+      "outbox": ["./projects/outbox/src/public-api.ts"]
     },
     "noFallthroughCasesInSwitch": true,
     "skipLibCheck": true,
@@ -29,8 +28,6 @@
   "references": [
     { "path": "./projects/outbox/tsconfig.lib.json" },
     { "path": "./projects/outbox/tsconfig.spec.json" },
-    { "path": "./projects/url-state/tsconfig.lib.json" },
-    { "path": "./projects/url-state/tsconfig.spec.json" },
     { "path": "./projects/demo/tsconfig.app.json" }
   ]
 }

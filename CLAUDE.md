@@ -29,8 +29,6 @@ in cold, so every word in its vocabulary must change code or catch a bug, or it 
   JasperFx event-sourcing API, so Marten docs apply.
 - SSE: .NET 10 has first-class support (`TypedResults.ServerSentEvents`). Whether SSE fan-out
   belongs in Wolverine as a transport is an **open question**. Don't assume it's one.
-- `client/angular/projects/url-state/with-router.ts` is meant to go away eventually, in
-  favour of the mix-in style of `withQueryParam`/`withMatrixParam`. Not now.
 - `docs/` has leftovers from a course (state ledger, `outbox.md`). They're useful for the
   ideas, but this repo isn't training material.
 

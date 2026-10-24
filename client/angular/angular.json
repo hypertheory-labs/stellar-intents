@@ -27,26 +27,6 @@
         }
       }
     },
-    "url-state": {
-      "projectType": "library",
-      "root": "projects/url-state",
-      "sourceRoot": "projects/url-state/src",
-      "prefix": "url",
-      "architect": {
-        "build": {
-          "builder": "@angular/build:ng-packagr",
-          "configurations": {
-            "production": { "tsConfig": "projects/url-state/tsconfig.lib.prod.json" },
-            "development": { "tsConfig": "projects/url-state/tsconfig.lib.json" }
-          },
-          "defaultConfiguration": "production"
-        },
-        "test": {
-          "builder": "@angular/build:unit-test",
-          "options": { "tsConfig": "projects/url-state/tsconfig.spec.json" }
-        }
-      }
-    },
     "demo": {
       "projectType": "application",
       "schematics": {

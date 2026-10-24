@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Edge.Sse;
+using ReferenceApi.Streaming;
 using ReferenceApi.Dev;
 using ReferenceApi.Holds;
 using ReferenceApi.Session;
@@ -77,7 +78,8 @@ app.MapGet("/", () => Results.Redirect("/scalar")).ExcludeFromDescription();
 app.MapWolverineEndpoints();
 // PROTOCOL §3: the signed-in patron's event stream. "subscribed" first, then
 // "intent-decided" and "invalidate" as they happen, and "heartbeat" now and then.
-app.MapServerSentEvents("/events", context => context.User.PatronId())
+app.MapServerSentEvents("/events", context =>
+        context.User.PatronId() is { } patronId ? [ProtocolEvents.PatronGroup(patronId)] : null)
     .RequireAuthorization()
     .WithTags("Events")
     .WithSummary("The signed-in patron's event stream (Server-Sent Events). 401 without a session.");

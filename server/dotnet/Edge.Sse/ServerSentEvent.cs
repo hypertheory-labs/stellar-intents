@@ -3,7 +3,7 @@ using Wolverine;
 namespace Edge.Sse;
 
 /// <summary>
-/// An event for the open streams of an audience (null: everyone). Return it from a
+/// An event for the open streams in a group. Return it from a
 /// Wolverine handler, or publish it on the handler's bus, and it goes down the stream only
 /// after the handler's transaction commits.
 /// </summary>
@@ -12,15 +12,15 @@ namespace Edge.Sse;
 /// hear about a change that then rolls back. As a cascading message, it's sent only after
 /// commit. That guarantee is the only reason this package needs Wolverine.
 /// </remarks>
-/// <param name="Audience">Whose open streams get it, or null for every open stream.</param>
+/// <param name="Group">Which open streams get it. <see cref="SseGroups.Everyone"/> reaches all of them.</param>
 /// <param name="EventType">The SSE event name, which is what EventSource listeners subscribe to.</param>
 /// <param name="Data">Serialized as JSON.</param>
-public record ServerSentEvent(string? Audience, string EventType, object Data);
+public record ServerSentEvent(string Group, string EventType, object Data);
 
 /// <summary>Hands committed events to the hub.</summary>
 public static class ServerSentEventHandler
 {
-    public static void Handle(ServerSentEvent sent, SseHub hub) => hub.Publish(sent.Audience, sent.EventType, sent.Data);
+    public static void Handle(ServerSentEvent sent, SseHub hub) => hub.Publish(sent.Group, sent.EventType, sent.Data);
 }
 
 public static class SseWolverineExtensions

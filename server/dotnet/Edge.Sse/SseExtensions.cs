@@ -16,21 +16,22 @@ public static class SseExtensions
     }
 
     /// <summary>
-    /// A GET that opens one connection's stream. <paramref name="audienceOf"/> says who the
-    /// connection is for; null answers 401.
+    /// A GET that opens one connection's stream. <paramref name="groupsOf"/> says which groups
+    /// the connection is in (besides <see cref="SseGroups.Everyone"/>); null answers 401.
     /// </summary>
     /// <remarks>
-    /// WHY the audience comes from the request (usually its user) and never from the path:
-    /// who you are doesn't travel in a URL.
+    /// WHY the app decides the groups: the request can ask (a query string of topics, as
+    /// Mercure does), but only the app can say what this person may hear. Who they are comes
+    /// from the request's identity, never from the URL.
     /// FOR REAL: proxies and load balancers may buffer streams. Disable response buffering
     /// and compression for this route wherever it's proxied.
     /// </remarks>
     public static RouteHandlerBuilder MapServerSentEvents(
         this IEndpointRouteBuilder endpoints,
         string pattern,
-        Func<HttpContext, string?> audienceOf) =>
+        Func<HttpContext, IEnumerable<string>?> groupsOf) =>
         endpoints.MapGet(pattern, (HttpContext context, SseHub hub) =>
-            audienceOf(context) is { } audience
-                ? Results.ServerSentEvents(hub.Subscribe(audience, context.RequestAborted))
+            groupsOf(context) is { } groups
+                ? Results.ServerSentEvents(hub.Subscribe(groups, context.RequestAborted))
                 : Results.Unauthorized());
 }

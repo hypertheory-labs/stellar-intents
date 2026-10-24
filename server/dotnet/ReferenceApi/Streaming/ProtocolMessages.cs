@@ -24,13 +24,16 @@ public enum IntentOutcome { Accepted, Declined, Withdrawn }
 
 public static class ProtocolEvents
 {
+    /// <summary>The group of a patron's open streams: every tab they have open.</summary>
+    public static string PatronGroup(string patronId) => $"patron:{patronId}";
+
     /// <summary>An intent's outcome, for the user who asked.</summary>
-    /// <param name="audience">The patron to tell.</param>
+    /// <param name="patronId">The patron to tell.</param>
     /// <param name="intentId">The command's Idempotency-Key.</param>
     /// <param name="outcome">Final: an outcome never changes.</param>
     /// <param name="detail">Shown to the user, so written for a person (same rules as a problem's detail).</param>
-    public static ServerSentEvent IntentDecided(string audience, Guid intentId, IntentOutcome outcome, string? detail = null) =>
-        new(audience, "intent-decided", new
+    public static ServerSentEvent IntentDecided(string patronId, Guid intentId, IntentOutcome outcome, string? detail = null) =>
+        new(PatronGroup(patronId), "intent-decided", new
         {
             intentId,
             outcome = outcome switch
@@ -43,8 +46,8 @@ public static class ProtocolEvents
         });
 
     /// <summary>Reads under these keys changed.</summary>
-    /// <param name="audience">The patron to tell, or null for everyone connected.</param>
+    /// <param name="group">Who to tell: a patron's group, or <see cref="SseGroups.Everyone"/>.</param>
     /// <param name="keys">Paths (and query) relative to the API root. See PROTOCOL §3 for how they match.</param>
-    public static ServerSentEvent Invalidate(string? audience, params string[] keys) =>
-        new(audience, "invalidate", new { keys });
+    public static ServerSentEvent Invalidate(string group, params string[] keys) =>
+        new(group, "invalidate", new { keys });
 }

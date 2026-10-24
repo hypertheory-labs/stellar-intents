@@ -19,7 +19,8 @@ public static class HoldKeys
 {
     public static ServerSentEvent[] Changed(Hold hold) =>
     [
-        ProtocolEvents.Invalidate(hold.PatronId, $"/holds/{hold.Id}", $"/holds?patronId={hold.PatronId}"),
-        ProtocolEvents.Invalidate(null, $"/holds?titleId={hold.TitleId}"),
+        ProtocolEvents.Invalidate(ProtocolEvents.PatronGroup(hold.PatronId), $"/holds/{hold.Id}", $"/holds?patronId={hold.PatronId}"),
+        // FOR REAL: only the streams showing this title's wait list. Nothing knows which those are yet.
+        ProtocolEvents.Invalidate(SseGroups.Everyone, $"/holds?titleId={hold.TitleId}"),
     ];
 }

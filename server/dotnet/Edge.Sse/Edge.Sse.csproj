@@ -14,4 +14,8 @@
         <PackageReference Include="WolverineFx" Version="6.50.2" />
     </ItemGroup>
 
+    <ItemGroup>
+        <InternalsVisibleTo Include="Edge.Sse.Tests" />
+    </ItemGroup>
+
 </Project>

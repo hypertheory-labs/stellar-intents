@@ -8,7 +8,8 @@ using Microsoft.Extensions.Options;
 namespace Edge.Sse;
 
 /// <summary>
-/// Fans events out to every open connection, by audience.
+/// Fans events out to open connections, by group. A connection is in every group it was
+/// opened with, and in <see cref="SseGroups.Everyone"/>.
 /// </summary>
 /// <remarks>
 /// WHY one channel PER CONNECTION, not one shared channel: .NET channels have competing
@@ -37,12 +38,12 @@ public sealed class SseHub(IOptions<SseOptions> options, IHostApplicationLifetim
 {
     private readonly SseOptions _options = options.Value;
 
-    // audience -> (connectionId -> that connection's channel)
-    private readonly ConcurrentDictionary<string, ConcurrentDictionary<Guid, Channel<SseItem<object>>>> _byAudience = new();
+    // group -> (connectionId -> that connection's channel)
+    private readonly ConcurrentDictionary<string, ConcurrentDictionary<Guid, Channel<SseItem<object>>>> _byGroup = new();
 
     /// <summary>One connection's stream. Ends when the client disconnects.</summary>
     public async IAsyncEnumerable<SseItem<object>> Subscribe(
-        string audience,
+        IEnumerable<string> groups,
         [EnumeratorCancellation] CancellationToken cancellation)
     {
         var channel = Channel.CreateBounded<SseItem<object>>(new BoundedChannelOptions(_options.PerConnectionCapacity)
@@ -52,8 +53,10 @@ public sealed class SseHub(IOptions<SseOptions> options, IHostApplicationLifetim
         });
 
         var connectionId = Guid.NewGuid();
-        var connections = _byAudience.GetOrAdd(audience, _ => new());
-        connections[connectionId] = channel;
+        // WHY everyone is a group like any other: broadcasting is then a choice a caller
+        // makes by name, never what a missing audience falls back to.
+        var memberOf = groups.Append(SseGroups.Everyone).Distinct().ToArray();
+        foreach (var group in memberOf) _byGroup.GetOrAdd(group, _ => new())[connectionId] = channel;
         using var heartbeats = StartHeartbeats(channel, cancellation);
         // The app is stopping: end this stream normally (see remarks). Completing the
         // channel ends the read loop below without an exception.
@@ -71,21 +74,22 @@ public sealed class SseHub(IOptions<SseOptions> options, IHostApplicationLifetim
         }
         finally
         {
-            connections.TryRemove(connectionId, out _);
-            // FOR REAL: remove the audience's entry when it empties (carefully: racing a new subscriber).
+            foreach (var group in memberOf)
+                if (_byGroup.TryGetValue(group, out var connections)) connections.TryRemove(connectionId, out _);
+            // FOR REAL: remove a group's entry when it empties (carefully: racing a new subscriber).
         }
     }
 
-    /// <summary>Copies an event to every open connection for the audience (null: everyone).</summary>
-    public void Publish(string? audience, string eventType, object data)
+    /// <summary>Copies an event to every open connection in the group.</summary>
+    public void Publish(string group, string eventType, object data)
     {
+        if (!_byGroup.TryGetValue(group, out var connections)) return;
         var item = new SseItem<object>(data, eventType);
-        var targets = audience is null
-            ? _byAudience.Values.SelectMany(c => c.Values)
-            : _byAudience.TryGetValue(audience, out var connections) ? connections.Values : [];
-
-        foreach (var channel in targets) Offer(channel, item);
+        foreach (var channel in connections.Values) Offer(channel, item);
     }
+
+    /// <summary>How many open connections are in the group. For tests.</summary>
+    internal int Members(string group) => _byGroup.TryGetValue(group, out var connections) ? connections.Count : 0;
 
     // WHY a "heartbeat" event and not a comment line (": keep-alive"): .NET's SseItem has no
     // way to write a comment. An event nobody listens for is just as invisible to

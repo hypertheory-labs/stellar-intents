@@ -25,7 +25,12 @@ public sealed class AppFixture : IAsyncLifetime
             // wants to (see Decide), so nothing races the assertions.
             builder.UseSetting("Holds:DecisionDelaySeconds", "3600");
             builder.UseSetting("Events:HeartbeatSeconds", "1");
-            builder.ConfigureServices(services => services.RunWolverineInSoloMode());
+            builder.ConfigureServices(services =>
+            {
+                services.RunWolverineInSoloMode();
+                // handlers that exist only for tests (see AfterCommitTests)
+                services.ConfigureWolverine(opts => opts.Discovery.IncludeAssembly(typeof(AppFixture).Assembly));
+            });
         });
     }
 

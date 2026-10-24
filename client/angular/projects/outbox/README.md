@@ -30,17 +30,14 @@ stateDiagram-v2
     [*] --> requested: enqueue()
     requested --> sent: sent at once
     sent --> received: 202 Accepted
-    sent --> done: other 2xx
+    sent --> decided: other 2xx (accepted), or a 4xx not 401 (declined)
     sent --> unknown: no answer in timeoutMs
     unknown --> received: late 202
-    unknown --> done: late 2xx
-    sent --> needs_attention: 4xx (not 401)
+    unknown --> decided: late 2xx or 4xx
     sent --> interrupted: no response, 5xx, 401
     interrupted --> sent: resend(), same id
-    received --> done: settle(done)
-    received --> needs_attention: settle(needs-attention)
-    done --> [*]: retire()
-    needs_attention --> [*]: dismiss()
+    received --> decided: settle(accepted | declined | withdrawn)
+    decided --> [*]: retire() if accepted, dismiss() if declined, at once if withdrawn
     interrupted --> [*]: dismiss()
 ```
 
@@ -50,15 +47,17 @@ stateDiagram-v2
 | `sent`            | It left. We don't know if it arrived.                                    | yes     | yes                |              |
 | `unknown`         | No answer in time. It **may have landed**. Not a failure.                | yes     | yes                | wait         |
 | `received`        | The server has it (202). The outcome is later. **Received is not done.** | yes     | yes                |              |
-| `done`            | The outcome is known and good.                                           | yes     | yes, until retired |              |
-| `needs-attention` | The outcome is known and bad.                                            | yes     | no                 | no           |
+| `decided`         | Final. `outcome` says how: `accepted`, `declined`, or `withdrawn`.       | yes     | if accepted, until retired | no, if declined |
 | `interrupted`     | Nothing was decided, nothing is in flight. It may have landed.           | yes     | yes                | try-again \* |
 
 \* Or `sign-in`, for a `401`. Apologies are sorted by what the person can do next: see
 PROTOCOL's Remedies.
 
-**A decision is final.** `done` and `needs-attention` never move again, except out
-(retire, dismiss). Answers can arrive in any order (the PUT's own answer, a status
+**Withdrawn** means the person took it back before it was decided (a cancel that got
+there first). Nothing is owed, so the outbox lets it go as soon as it's announced.
+
+**A decision is final.** A `decided` intent never moves again, except out (retire,
+dismiss). Answers can arrive in any order (the PUT's own answer, a status
 check, a server event), and a late one must not undo what's known.
 
 ## How a hold moves through it
@@ -84,8 +83,8 @@ sequenceDiagram
     P->>A: GET /holds (reload its own data)
     Note over P: the server's row (requested)<br/>replaces the guess: same id
     Note over A: a few seconds later: decided
-    A-->>O: SSE intent-decided (done)
-    O-->>P: [Outbox] intentDone
+    A-->>O: SSE intent-decided (accepted)
+    O-->>P: [Outbox] intentDecided
     P->>A: GET /holds
     Note over P: the row is now placed
     P->>O: retire(id)
@@ -159,12 +158,12 @@ listens.
 
 ```ts
 inject(Events)
-  .on(outboxEvents.intentReceived, outboxEvents.intentDone, outboxEvents.intentNeedsAttention)
+  .on(outboxEvents.intentReceived, outboxEvents.intentDecided)
   .pipe(takeUntilDestroyed())
   .subscribe(() => this.myHolds.reload()); // the page decides what it means for its data
 ```
 
-### 5. Hearing about "done"
+### 5. Hearing how it ended
 
 A `received` intent waits for an outcome. Three rungs, each on top of the last, all
 ending the same way:
@@ -177,8 +176,8 @@ ending the same way:
    status: {
      url: (intent) => `/api/holds/${intent.id}`,
      outcome: (hold: Hold) =>
-       hold.status === 'placed' ? { status: 'done' }
-       : hold.status === 'rejected' ? { status: 'needs-attention', detail: hold.reason ?? undefined }
+       hold.status === 'placed' ? { outcome: 'accepted' }
+       : hold.status === 'rejected' ? { outcome: 'declined', detail: hold.reason ?? undefined }
        : undefined, // not decided yet
    },
    ```
@@ -206,10 +205,10 @@ the real row never both show. `isCandidate(row)` tells them apart in a template.
 
 ```ts
 effect(() => {
-  const done = this.myIntents()
-    .filter((i) => i.state.status === 'done')
+  const accepted = this.myIntents()
+    .filter((i) => i.state.status === 'decided' && i.state.outcome === 'accepted')
     .map((i) => i.id);
-  const ready = readyToRetire(done, this.myHolds.value(), (h) => h.id);
+  const ready = readyToRetire(accepted, this.myHolds.value(), (h) => h.id);
   untracked(() => ready.forEach((id) => this.outbox.retire(id)));
 });
 ```
@@ -235,8 +234,8 @@ request.
   fresh until an invalidation covers it. Without a stream (or after it drops), values
   are stale-first: shown with their `fetchedAt`, and refetched when someone reads them.
 - **Invalidated from either side.** The server's `invalidate`, or an intent type's own
-  declaration, announced when the server has recorded the intent (received, done, or
-  needs-attention after being received), for this tab, at once:
+  declaration, announced when the server has recorded the intent (received, or
+  decided, though a decision against only after being received), for this tab, at once:
 
   ```ts
   invalidates: ({ id, payload }) => [`/holds/${id}`, `/holds?patronId=${payload.patronId}`],
@@ -274,7 +273,7 @@ intents are sent but not stored. For tests, pass `storage: memoryIntentStorage()
 | --------------------------- | -------------------------------------------------------------------------------------------------- |
 | `enqueue(type, payload)`    | Creates the intent (new id), publishes `intentRequested`, sends it. Returns the intent.            |
 | `resolve(id, outcome)`      | Records an outcome learned some other way. Ignored for unknown ids and decided intents.            |
-| `settle(id, outcome)`       | The same, from an `Outcome` (`done`, or `needs-attention` with a `detail`), as the stream says it. |
+| `settle(id, outcome)`       | The same, as the stream says it: `accepted`, `declined` (with a `detail`), or `withdrawn`. |
 | `checkStatus(id)`           | Asks the type's `status.url`; settles if the answer is decided. A 404 is "not recorded yet".       |
 | `checkWaiting()`            | `checkStatus` for every `received`, `unknown`, and `interrupted` intent.                           |
 | `resend(id)`                | Sends an `interrupted` intent again, same id. Anything else is ignored.                            |
@@ -283,26 +282,26 @@ intents are sent but not stored. For tests, pass `storage: memoryIntentStorage()
 | `dismiss(id)`               | The user let it go: removes the intent, publishes `intentDismissed`.                               |
 | `entities()`, `entityMap()` | Every intent still held (from `withEntities`).                                                     |
 | `receipts()`                | `{ intentId, status, text }` for every intent held. Always true.                                   |
-| `apologies()`               | `{ intentId, status, remedy, message, actions }` for `unknown`, `needs-attention`, `interrupted`.  |
+| `apologies()`               | `{ intentId, status, remedy, message, actions }` for `unknown`, declined, `interrupted`.          |
 | `candidates(type)`          | `Candidate<T>[]` for that type, except ones decided against.                                       |
 
 ### Sending
 
 - One `HttpClient.request` per intent, with `Idempotency-Key: {intent.id}` and the
   type's method, url, and body. (Only `POST`, `PUT`, `PATCH`, `DELETE`.)
-- **202** → `received`. **Any other 2xx** → `done`.
+- **202** → `received`. **Any other 2xx** → `decided`, accepted.
 - **No response, a `5xx`, or a `401`** → `interrupted`: nothing was decided. Remedy
   `try-again` (or `sign-in` for the `401`). It goes again with the **same** id.
-- **Any other error** → `needs-attention`, remedy `no`, with the HTTP status and a
+- **Any other error** → `decided`, declined, remedy `no`, with the HTTP status and a
   problem+json `detail` if the body has one.
 - **No answer in `timeoutMs`** → `unknown`. The request is **not** cancelled: a late
   answer still lands, unless the intent was decided some other way meanwhile.
 
 ### Events (`outboxEvents`, source `Outbox`)
 
-`[Outbox] intentRequested`, `intentSent`, `intentReceived`, `intentDone`,
-`intentUnknown`, `intentNeedsAttention`, `intentInterrupted`, `intentRetired`,
-`intentDismissed`. Each carries `{ intent }`.
+`[Outbox] intentRequested`, `intentSent`, `intentReceived`, `intentDecided`,
+`intentUnknown`, `intentInterrupted`, `intentRetired`, `intentDismissed`. Each carries
+`{ intent }`; for `intentDecided`, `intent.state.outcome` says how it ended.
 
 ### Promotion helpers
 

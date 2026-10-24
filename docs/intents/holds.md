@@ -22,7 +22,7 @@ things the code hides?
   ⚠ Two decisions for one patron can race past the limit (the event log has it; DCB is
   the candidate fix).
 - **Then:** the hold is placed (`HoldPlaced`).
-  → `IntentDecided: done`. Invalidates the hold, the patron's list, and the title's wait
+  → `IntentDecided: accepted`. Invalidates the hold, the patron's list, and the title's wait
   list (`HoldKeys`).
   **Tell:** the patron (the person). → `IntentDecided` is addressed to the patron, but ⚠
   it's only delivered to tabs open at the time. With none open, only a later status check
@@ -41,9 +41,10 @@ things the code hides?
     check answers `cancelled`, which the intent type doesn't map. So the intent sits in
     `received` forever. Worse, because the cancelled hold leaves the patron's list, the
     place-hold candidate **reappears as a guess**. Confirmed in the browser.
-    **Fixed** (`b10ab10` and the demo commit after it): the decision now sends an outcome
-    (`needs-attention` for now; PROTOCOL proposes "withdrawn"), and the demo dismisses
-    the placement when the cancel lands.
+    **Fixed** (`b10ab10` and the demo commit after it): the decision now sends an outcome,
+    `withdrawn` since the outcomes were named, and the demo dismisses the placement when
+    the cancel lands. ⚠ Only the demo knows the cancel overtakes the placement, and only
+    because a create's intent id is the hold's.
 
 ## Cancel a hold
 
@@ -55,12 +56,12 @@ things the code hides?
   - the hold exists and is theirs. → 404, 403.
 - **Manifests when:** the hold isn't rejected. → decided inside the request (no `202`).
 - **Then:** the hold is cancelled (`HoldCancelled`).
-  → `204`, so `done` at once. Invalidates the same three reads.
+  → `204`, so accepted at once. Invalidates the same three reads.
   **Tell:** this browser (the `204`). The patron's other tabs only see the hold leave
   their list. That's enough, because nothing is pending there.
 - **Otherwise:**
   - rejected → `no`: "This hold was never placed, so there's nothing to cancel." (409)
-  - already cancelled → `done` (a repeat is a success).
+  - already cancelled → accepted (a repeat is a success).
   - no such hold → `no` (404, with no `detail`, so the apology uses its own words).
   - another patron's → `no` (403).
   - **no answer in time** → `unknown`, and ⚠ **forever.** The type declares no status

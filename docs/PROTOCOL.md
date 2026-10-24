@@ -23,7 +23,7 @@ marker:
 | ---------------- | ---------------------------------------------------------------------------------------------------------------------- |
 | **Intent**       | Something the user asked the server to do, with a client-generated id. A request, not a fact.                          |
 | **Intent id**    | A UUID the client makes (`crypto.randomUUID()`). It is the idempotency key. For a create, it's also the new resource's id. |
-| **Outcome**      | What finally happened: `done` (good) or `needs-attention` (bad). **An outcome is final.**                              |
+| **Outcome**      | How an intent ended: `accepted`, `declined`, or `withdrawn` (the person took it back first). **An outcome is final.**  |
 | **Memory**       | The server's data, as the client last fetched it. The client never edits it to "look right."                           |
 | **Receipt**      | What the client can truthfully say about an intent right now ("We've received your request…"). Always true.            |
 | **Candidate**    | The client's guess at what an intent will become. Kept apart from memory and dropped when memory has the real item.    |
@@ -58,8 +58,9 @@ stateDiagram-v2
         [*] --> received
     }
     state "Decided (final)" as decided {
-        done
-        needs_attention
+        accepted
+        declined
+        withdrawn
     }
     [*] --> us
     us --> them: 202 (or a late 202)
@@ -74,31 +75,35 @@ stateDiagram-v2
 | `sent`            | It left. We don't know if it arrived.                           | yes                |                  |
 | `unknown`         | No answer in time. It **may have landed**. Not a failure.       | yes                | `wait`           |
 | `received`        | The server has it (`202`). **Received is not done.**            | yes                |                  |
-| `done`            | The outcome is known and good.                                  | yes, until retired |                  |
-| `needs-attention` | The outcome is known and bad.                                   | no                 | `no`             |
+| `decided`         | Final. Its outcome says how: `accepted`, `declined`, `withdrawn`. | if accepted, until retired | `no`, if declined |
 | `interrupted`     | Nothing was decided and nothing is in flight. It may have landed. | yes                | `try-again`, or `sign-in` (a `401`) |
 
 Every state has a receipt.
 
-- **A decision is final.** `done` and `needs-attention` never change again; the intent
-  only leaves (retired once memory has it, or dismissed). Answers arrive in any order, and
+- **A decision is final.** A `decided` intent never changes again; it only leaves
+  (retired once memory has it, dismissed after its apology, or at once if withdrawn). Answers arrive in any order, and
   a late one must not undo what's known.
 - **Only a decision is final.** A `5xx`, a `401`, or no response isn't a decision, so it
   lands in `interrupted`, which goes again with the **same id**. A new id would be a new
   request, and a duplicate if the first one landed after the server committed.
+- **Withdrawn** means the person took it back before it was decided. After the request
+  has left this browser, that takes a new intent (a cancel), which races the decision. If
+  the cancel gets there first, the first intent's outcome is `withdrawn`, and nothing is
+  owed: no receipt, guess, or apology. If the decision gets there first, the first intent
+  is decided as usual, and the cancel acts on whatever it became.
+  - **[Proposed]** Nothing on the wire says which intent a cancel overtakes. Today a
+    client can only tell when the intent created the thing being cancelled (the same
+    id), and until the server's `withdrawn` arrives, the first intent's guess can come
+    back.
+  - **[Proposed]** "Never mind" *before* it left this browser needs no wire at all. No
+    client offers it yet.
 - **[Proposed]** Changes the phases suggest:
-  - **One final state; the edge into it says how it ended.** `done` and
-    `needs-attention` are both final, and only the outcome differs: *accepted*,
-    *declined*, or *withdrawn* (the person said "never mind" before it left this
-    browser). "Needs attention" is the wrong name for a decision against, and the right
-    one for the next bullet.
   - **With them, stuck:** `received` past the time the server promised (a `202` with
     `Retry-After`). The receipt's "you'll hear back within a minute" has lapsed.
   - **With them, needs a person:** the server can't decide without its own staff (a
     dead-lettered message). Nothing on the wire can say so today. It needs its own
     event, and its remedy is an offer: "let's talk." It isn't final; a person will decide.
-  - "Never mind" *after* the request left this browser isn't a withdrawal. It's a new
-    intent (a cancel), and the first one can still be decided.
+    (This is what "needs attention" should have meant all along.)
 
 ---
 
@@ -162,8 +167,8 @@ Content-Type: application/json
 | Status                        | Means                                                                       | Client moves the intent to                      |
 | ----------------------------- | --------------------------------------------------------------------------- | ----------------------------------------------- |
 | `202 Accepted`                | Recorded. The outcome comes later.                                          | `received`                                      |
-| any other `2xx`               | Done, and the outcome is good.                                              | `done`                                          |
-| `4xx` (not `401`)             | Rejected: a decision. Body is `application/problem+json`.                   | `needs-attention` (with the problem's `detail`) |
+| any other `2xx`               | Done, and the outcome is good.                                              | `decided`, accepted                             |
+| `4xx` (not `401`)             | Rejected: a decision. Body is `application/problem+json`.                   | `decided`, declined (with the problem's `detail`) |
 | `401`                         | Not signed in. Nothing was decided.                                         | `interrupted` (remedy `sign-in`)                |
 | `5xx`                         | The server failed. **Nothing was decided**, as far as the client knows.     | `interrupted` (remedy `try-again`)              |
 | no response (status 0)        | It may or may not have reached the server.                                  | `interrupted` (remedy `try-again`)              |
@@ -206,9 +211,9 @@ For an intent stuck in `received` or `unknown`, the client can always ask:
 GET /holds/0b6e0c3e-6a5c-4c4e-9f6e-2f0d8f1c7a11 HTTP/1.1
 ```
 
-- `200` with the representation. Whether that representation means `done` or
-  `needs-attention` is resource-specific (a hold's `status` is `placed` or `rejected`), so
-  the client's intent type supplies the mapping.
+- `200` with the representation. Which outcome that representation means is
+  resource-specific (a hold's `status` is `placed`, `rejected`, or `cancelled`), so the
+  client's intent type supplies the mapping.
 - `404` while the command hasn't been recorded yet (it may still be in flight, or it never
   arrived). Not an outcome; the client keeps waiting or resends.
 
@@ -345,8 +350,8 @@ What a conforming client has, in any framework. Names are suggestions.
    intent makes stale (announced when the server has recorded it: the same moments the
    server would send `invalidate`).
 3. **Sender.** Sends a command per §1 and maps the response to a state. Never cancels on
-   timeout. Applies states with one rule: **once `done` or `needs-attention`, never
-   change again** (answers arrive in any order).
+   timeout. Applies states with one rule: **once `decided`, never change
+   again** (answers arrive in any order).
 4. **Status checker.** §2, on demand and on page-visible.
 5. **Stream listener.** Opens §3's stream, reconnects with backoff (browsers sometimes
    leave an `EventSource` `CLOSED` for good, e.g. after an API restart, so don't rely on
@@ -359,7 +364,7 @@ What a conforming client has, in any framework. Names are suggestions.
    time-based freshness.
 7. **Merge for display.** What the screen shows is memory plus the candidates whose id
    isn't in memory yet, candidates first, with candidates visibly marked as guesses. When
-   a `done` intent's id appears in memory, retire the intent.
+   an accepted intent's id appears in memory, retire the intent.
 8. **Storage (optional).** Keeps intents across page loads. See
    [Durability](#durability-proposed).
 
@@ -463,24 +468,24 @@ implementation can be checked without reading the reference code.
 
 1. Enqueue → the request carries `Idempotency-Key` equal to the intent id; the intent is
    `sent`.
-2. `202` → `received`. `201`/`200`/`204` → `done`.
-3. `409` with problem+json `detail: "X"` → `needs-attention`, remedy `no`, and the apology
+2. `202` → `received`. `201`/`200`/`204` → accepted.
+3. `409` with problem+json `detail: "X"` → declined, remedy `no`, and the apology
    can say "X". A `401` → `interrupted`, remedy `sign-in`.
 4. `500` with an HTML body → `interrupted`, remedy `try-again`, no `detail`, no crash.
 5. Network failure (status 0) → `interrupted`, remedy `try-again`. When the server is
    reachable again, it's sent with the **same** id, and the server ends up with one
    resource.
 6. No answer within the timeout → `unknown`, remedy `wait`; then a late `202` →
-   `received`; a late `200` → `done`.
+   `received`; a late `200` → accepted.
 7. *(server)* Same id, same body, twice → same answer both times, one resource. Same id,
    different body → `409`.
 
 **Outcomes are final**
 
-8. `intent-decided: done` arrives, then the command's late `202` → still `done`.
-9. `intent-decided: needs-attention`, then a status check says `done` → still
-   `needs-attention`.
-10. `intent-decided` for an id the client doesn't hold → ignored, no error.
+8. `intent-decided: accepted` arrives, then the command's late `202` → still accepted.
+9. `intent-decided: declined`, then a status check says accepted → still declined.
+10. `intent-decided` for an id the client doesn't hold → ignored, no error. An outcome
+    the client doesn't know (a newer server) → ignored.
 
 **Stream**
 
@@ -499,9 +504,10 @@ implementation can be checked without reading the reference code.
 
 16. A candidate shows, marked as a guess, until memory contains its id; then only the real
     item shows (never both, never neither).
-17. A `needs-attention` intent shows no candidate, and shows its apology. An `interrupted`
+17. A declined intent shows no candidate, and shows its apology. A withdrawn one shows
+    nothing at all. An `interrupted`
     one keeps its candidate: nothing has been decided.
-18. A `done` intent whose id is in memory is retired.
+18. An accepted intent whose id is in memory is retired.
 
 **Durability [Proposed]** (19 and 21 are implemented; 20, 22 and 23 aren't built)
 

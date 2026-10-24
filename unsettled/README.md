@@ -1,4 +1,4 @@
-# tmp: not true yet
+# unsettled: not true yet
 
 Ideas that need to outlast a conversation but can't be said with confidence. Nothing
 here is built, and nothing here is a decision. [`docs/`](../docs) says what the system

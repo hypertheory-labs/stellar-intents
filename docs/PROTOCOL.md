@@ -10,7 +10,7 @@ If you're building a client for this protocol (in any framework), read
 building a server, read [The server](#the-server). Everyone reads [Vocabulary](#vocabulary).
 
 **Everything here is built**: the reference server and the Angular client do it today.
-Ideas that aren't built live in [`tmp/`](../tmp), until they are or until they're dropped.
+Ideas that aren't built live in [`unsettled/`](../unsettled), until they are or until they're dropped.
 
 ---
 

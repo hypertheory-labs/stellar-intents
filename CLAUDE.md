@@ -18,7 +18,7 @@ in cold, so every word in its vocabulary must change code or catch a bug, or it 
 - **`docs/PROTOCOL.md` is the thing being proved.** The Angular libraries and the .NET
   server are references for it. When code and the protocol disagree, say which one is
   wrong. Don't quietly make them agree.
-- **`docs/` says only what's built.** Speculation that must outlast a cart goes in `tmp/`,
+- **`docs/` says only what's built.** Speculation that must outlast a cart goes in `unsettled/`,
   until it's built or deleted. That split is how a reader can trust `docs/`.
 - The README's "Rules this repo keeps" are binding: specify the wire, not the
   framework; no required app structure; use HTTP's conventions where it has them.

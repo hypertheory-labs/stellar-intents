@@ -113,7 +113,7 @@ export const cancelHold = defineIntentType<CancelHoldPayload, never, Hold>({
     actions: [],
   },
   // The read that confirms a cancel: the hold itself says "cancelled". Without this, a
-  // cancel whose answer was lost stayed unknown forever (tmp/holds-in-irmto.md).
+  // cancel whose answer was lost stayed unknown forever (unsettled/holds-in-irmto.md).
   status: {
     url: ({ payload }) => `/api/holds/${payload.holdId}`,
     outcome: (hold) =>

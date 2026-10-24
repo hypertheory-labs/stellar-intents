@@ -122,7 +122,7 @@ describe('durability (PROTOCOL: Durability, proposed)', () => {
     http.verify(); // no PUT
   });
 
-  // the server never got it. Resending on a 404 isn't built (tmp/protocol-proposed.md);
+  // the server never got it. Resending on a 404 isn't built (unsettled/protocol-proposed.md);
   // until then it stays unknown, and its apology says so.
   it('leaves a restored intent unknown when the server never got it', async () => {
     const storage = memoryIntentStorage();

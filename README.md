@@ -32,7 +32,7 @@ This is a guess about where we are, not a settled design.
    worth offering is probably a layer for the Edge: _we keep the person's browser
    informed, track sessions and pending intents, and deliver receipts and apologies; you
    plug in what happens when._ Its shape is unknown.
-4. **A way to specify intents.** [IRMTO](tmp/specifying-intents.md) (Intent, Rests on,
+4. **A way to specify intents.** [IRMTO](unsettled/specifying-intents.md) (Intent, Rests on,
    Manifests when, Then, Otherwise) is a way to write down how to be that clerk, when
    twenty years of ACID trained us to be the other guy. Maybe one day it's executable,
    for people and AIs to iterate on.
@@ -45,7 +45,7 @@ problem details, `ETag`) and Server-Sent Events, with conventions written down.
 | Path                                                               | What                                                                                                                  | Status                                  |
 | ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------- | --------------------------------------- |
 | [`docs/PROTOCOL.md`](docs/PROTOCOL.md)                             | The intent wire protocol: commands, status checks, the event stream, reads, conformance scenarios. Only what's built. | Draft 0.3                               |
-| [`tmp/`](tmp)                                                      | Ideas not built yet: IRMTO, quote → bind, the protocol's proposed parts. Not decisions.                               | Speculative                             |
+| [`unsettled/`](unsettled)                                          | Ideas not built yet: IRMTO, quote → bind, the protocol's proposed parts. Not decisions.                               | Speculative                             |
 | [`server/dotnet/ReferenceApi`](server/dotnet/ReferenceApi)         | A reference server: library holds on Wolverine + Fisher (event-sourced, SQLite), .NET 10.                             | Protocol §0–3, tested. **No Edge yet.** |
 | [`client/angular/projects/outbox`](client/angular/projects/outbox) | The browser's half: intents, receipts, candidates, apologies; the event stream; a read cache.                         | Tested; intents stored in IndexedDB     |
 | [`client/angular/projects/demo`](client/angular/projects/demo)     | A small holds page, for sanity checks against the server.                                                             | Runnable                                |
@@ -90,7 +90,7 @@ Not a roadmap, just the next questions:
 - **The weight of the Edge.** Does it know what an intent means (the clerk), or does it
   only check the basis and pass the command on (the counter)? Remedies, offers and
   apologies get written in whichever place the answer picks.
-- **Quote → bind**, the second domain, [specified before building](tmp/quotes.md).
+- **Quote → bind**, the second domain, [specified before building](unsettled/quotes.md).
   It's the first one where the basis (a price) can change underneath an intent, and the
   first test of `supersedes`.
 - **What a basis names.** An ETag on a whole aggregate locks too much. A validator per

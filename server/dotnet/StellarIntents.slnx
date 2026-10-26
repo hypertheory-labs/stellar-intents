@@ -1,4 +1,6 @@
 <Solution>
+  <Project Path="Edge.Errands/Edge.Errands.csproj" />
+  <Project Path="Edge.Errands.Tests/Edge.Errands.Tests.csproj" />
   <Project Path="Edge.Sse/Edge.Sse.csproj" />
   <Project Path="Edge.Sse.Tests/Edge.Sse.Tests.csproj" />
   <Project Path="ReferenceApi/ReferenceApi.csproj" />

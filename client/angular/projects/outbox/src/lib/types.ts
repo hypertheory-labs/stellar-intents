@@ -167,12 +167,6 @@ export interface IntentType<TPayload, TCandidate = never, TStatus = unknown> {
   readonly timeoutMs?: number;
   /** Optional: how to ask what became of it. Without one, only the server's events can tell. */
   readonly status?: StatusCheck<TPayload, TStatus>;
-  /**
-   * Optional: the reads this intent makes stale (read keys, PROTOCOL §3), announced when
-   * the server has recorded it: `received`, or `decided` (but a decision against only
-   * after being received). The same keys the server would send in `invalidate`, for this tab, at once.
-   */
-  invalidates?(intent: Intent<TPayload>): readonly string[];
 }
 
 /** Identity function that exists so TypeScript can infer TPayload and TCandidate. */

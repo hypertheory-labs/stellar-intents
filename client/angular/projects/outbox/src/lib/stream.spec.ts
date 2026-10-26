@@ -196,7 +196,7 @@ describe('the event stream (PROTOCOL §3)', () => {
     expect(ctx.seen).toContainEqual(
       expect.objectContaining({
         type: '[Reads] invalidated',
-        payload: { keys: ['/holds?patronId=P0042'], from: 'server' },
+        payload: { keys: ['/holds?patronId=P0042'] },
       }),
     );
   });

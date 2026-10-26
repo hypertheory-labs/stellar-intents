@@ -236,16 +236,11 @@ request.
 - **Fresh only while live.** A value fetched while the event stream is connected stays
   fresh until an invalidation covers it. Without a stream (or after it drops), values
   are stale-first: shown with their `fetchedAt`, and refetched when someone reads them.
-- **Invalidated from either side.** The server's `invalidate`, or an intent type's own
-  declaration, announced when the server has recorded the intent (received, or
-  decided, though a decision against only after being received), for this tab, at once:
-
-  ```ts
-  invalidates: ({ payload }) => [`/holds?patronId=${payload.patronId}`],
-  ```
-
-  Both arrive as `invalidationEvents.invalidated { keys, from }`, matched with PROTOCOL
-  §3's rule (`covers`).
+- **Invalidated by the server only.** The stream's `invalidate` arrives as
+  `invalidationEvents.invalidated { keys }`, matched with PROTOCOL §3's rule (`covers`).
+  An intent type doesn't say which reads it makes stale: the server knows what a commit
+  wrote, and the type would only be guessing. Without a stream, a list on screen isn't
+  refetched when an intent is decided, so its guess stays until the list is read again.
 
 - **A failed refetch keeps the value** (it's still the last thing the server said) and
   sets `refreshError`. Only a first load that fails is `error`.
@@ -328,7 +323,7 @@ intents are sent but not stored. For tests, pass `storage: memoryIntentStorage()
 
 `provideOutboxStream(options)`, `provideOutboxStatusChecks()`, `serverEvents` (source
 `Server`: `subscribed`, `disconnected`, `signedOut`), `invalidationEvents` (source
-`Reads`: `invalidated { keys, from }`), and `EVENT_SOURCE` (the EventSource factory, to
+`Reads`: `invalidated { keys }`), and `EVENT_SOURCE` (the EventSource factory, to
 replace in tests).
 
 ### Reads (`src/lib/reads.ts`, `src/lib/read-cache.ts`)

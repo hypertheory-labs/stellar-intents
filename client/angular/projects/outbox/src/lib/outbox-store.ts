@@ -134,20 +134,12 @@ export const OutboxStore = signalStore(
       patchState(store, updateEntity({ id, changes: { state } }));
       void persist(current(id));
       transitionEvents[state.status]({ intent: current(id) });
-      if (serverRecorded(now.state, state)) announceInvalidation(current(id));
       // Withdrawn: the person took it back themselves. No receipt, guess, or apology is
       // owed, so once it's been announced there's nothing left to hold.
       if (state.status === 'decided' && state.outcome === 'withdrawn') {
         patchState(store, removeEntity(id));
         forget(id);
       }
-    }
-
-    // The type's declared invalidation (see IntentType.invalidates), whenever the server has
-    // recorded something: the same moments the server would send `invalidate` itself.
-    function announceInvalidation(intent: Intent) {
-      const keys = store._types.get(intent.type)?.invalidates?.(intent);
-      if (keys?.length) store._invalidate.invalidated({ keys, from: 'intent' });
     }
 
     function settle(id: string, outcome: Outcome) {
@@ -382,21 +374,6 @@ function failureOf(state: IntentState): Failure | undefined {
       return { remedy: 'wait' };
     default:
       return undefined;
-  }
-}
-
-/**
- * Did the server just record something? Accepting it (202), deciding it, or deciding against
- * it after accepting it. A rejection straight from the command (a 4xx) changed nothing.
- */
-function serverRecorded(from: IntentState, to: IntentState) {
-  switch (to.status) {
-    case 'received':
-      return true;
-    case 'decided':
-      return to.outcome === 'accepted' || from.status === 'received' || from.status === 'unknown';
-    default:
-      return false;
   }
 }
 

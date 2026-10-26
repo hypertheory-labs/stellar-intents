@@ -378,10 +378,9 @@ What a conforming client has, in any framework. Names are suggestions.
 1. **Intent store.** Holds intents (plain, serializable data: id, type name, payload,
    timestamps, state). Exposes receipts, candidates, and apologies derived from them.
 2. **Intent types, registered in code.** For each kind of errand: how to build the
-   request from the intent, the receipt text, an optional candidate, an apology, a
-   timeout, and which read keys the
-   intent makes stale (announced when the server has recorded it: the same moments the
-   server would send `invalidate`).
+   request from the intent, the receipt text, an optional candidate, an apology, and a
+   timeout. Not which reads it makes stale: only the server's `invalidate` says that
+   (§3), because only the server knows what a commit wrote.
 3. **Sender.** Sends an errand per §1 and maps the response to a state (a `200` by its body). Never cancels on
    timeout. Applies states with one rule: **once `decided`, never change
    again** (answers arrive in any order).

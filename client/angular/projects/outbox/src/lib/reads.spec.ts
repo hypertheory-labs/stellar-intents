@@ -98,7 +98,7 @@ describe('cachedHttpResource', () => {
     it('from the server: stale-first, then the new value', async () => {
       const { http, reads, holds } = await liveWithAValue();
 
-      reads.invalidated({ keys: ['/holds?patronId=P0042'], from: 'server' });
+      reads.invalidated({ keys: ['/holds?patronId=P0042'] });
       expect(holds.status()).toBe('reloading');
       expect(holds.value()).toEqual(['h1']); // still showing what we had
 
@@ -108,15 +108,9 @@ describe('cachedHttpResource', () => {
       expect(holds.stale()).toBe(false);
     });
 
-    it('from an intent type: the same keys, the same effect', async () => {
-      const { http, reads } = await liveWithAValue();
-      reads.invalidated({ keys: ['/holds?patronId=P0042'], from: 'intent' });
-      http.expectOne('/api/holds?patronId=P0042');
-    });
-
     it('a key that does not cover the read leaves it alone', async () => {
       const { http, reads, holds } = await liveWithAValue();
-      reads.invalidated({ keys: ['/holds?titleId=1001'], from: 'server' });
+      reads.invalidated({ keys: ['/holds?titleId=1001'] });
       http.expectNone('/api/holds?patronId=P0042');
       expect(holds.stale()).toBe(false);
     });
@@ -135,7 +129,7 @@ describe('cachedHttpResource', () => {
     http.expectOne('/api/holds').flush(['h1']);
     await settle();
 
-    reads.invalidated({ keys: ['/holds'], from: 'server' });
+    reads.invalidated({ keys: ['/holds'] });
     http.expectOne('/api/holds').flush(null, { status: 500, statusText: 'Server Error' });
     await settle();
 

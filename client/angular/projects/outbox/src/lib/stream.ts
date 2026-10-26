@@ -169,7 +169,7 @@ function follow({
     });
     opened.addEventListener('invalidate', (event) => {
       const invalidate = parse<{ keys: string[] }>(event);
-      if (invalidate) invalidation.invalidated({ keys: invalidate.keys, from: 'server' });
+      if (invalidate) invalidation.invalidated({ keys: invalidate.keys });
     });
     // EventSource retries some failures by itself (readyState back to CONNECTING). The ones
     // it gives up on (CLOSED) include a 401 and, in Chrome, an API restart: those are ours.

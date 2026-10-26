@@ -272,7 +272,6 @@ export class App {
   protected cancel(hold: Hold) {
     this.outbox.enqueue(cancelHold, {
       holdId: hold.id,
-      patronId: hold.patronId,
       titleId: hold.titleId,
     });
   }

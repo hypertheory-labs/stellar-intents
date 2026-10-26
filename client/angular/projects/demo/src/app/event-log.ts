@@ -77,8 +77,8 @@ function describe(payload: unknown): string {
     return `${intent.type} ${intent.id.slice(0, 8)}`;
   }
   if ('keys' in payload) {
-    const { keys, from } = payload as { keys: string[]; from: string };
-    return `from ${from}: ${keys.join(', ')}`;
+    const { keys } = payload as { keys: string[] };
+    return keys.join(', ');
   }
   return '';
 }

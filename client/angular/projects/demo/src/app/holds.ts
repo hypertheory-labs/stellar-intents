@@ -22,13 +22,7 @@ export const TITLES = [
 
 export const titleName = (id: number) => TITLES.find((t) => t.id === id)?.name ?? `title ${id}`;
 
-/** Which reads a change to a hold makes stale. The same keys the server sends (HoldKeys.cs). */
-const holdKeys = (patronId: string, titleId: number) => [
-  `/holds?patronId=${patronId}`,
-  `/holds?titleId=${titleId}`,
-];
-
-/** An errand as the server represents it (GET /errands/{id}, PROTOCOL §5). */
+/** An errand as the server represents it (GET /errands/{id}, PROTOCOL §2). */
 interface Errand {
   id: string;
   type: string;
@@ -62,12 +56,12 @@ export interface PlaceHoldPayload {
 }
 
 /**
- * Placing a hold: an errand (PROTOCOL §5). The intent's id is the errand's; the hold gets
+ * Placing a hold: an errand (PROTOCOL §1). The intent's id is the errand's; the hold gets
  * its own, which the outcome says (`made`), and the guess is replaced when memory has it.
  */
 export const placeHold = defineIntentType<PlaceHoldPayload, Hold, Errand>({
   name: 'place-hold',
-  // patronId is in the payload for the read keys only. The server takes it from the session.
+  // patronId is in the payload for the guess only. The server takes it from the session.
   request: ({ id, payload: { titleId, branchCode } }) => ({
     method: 'PUT',
     url: `/api/errands/${id}`,
@@ -102,12 +96,10 @@ export const placeHold = defineIntentType<PlaceHoldPayload, Hold, Errand>({
   },
   timeoutMs: 10_000,
   status: errandStatus,
-  invalidates: ({ payload }) => holdKeys(payload.patronId, payload.titleId),
 });
 
 export interface CancelHoldPayload {
   holdId: string;
-  patronId: string;
   titleId: number;
 }
 
@@ -131,5 +123,4 @@ export const cancelHold = defineIntentType<CancelHoldPayload, never, Errand>({
     actions: [],
   },
   status: errandStatus,
-  invalidates: ({ payload }) => holdKeys(payload.patronId, payload.titleId),
 });

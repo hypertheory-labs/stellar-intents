@@ -88,15 +88,16 @@ npx ng serve demo  # the sanity-check page
 
 Not a roadmap, just the next questions:
 
-- **The weight of the Edge.** Does it know what an intent means (the clerk), or does it
-  only check the basis and pass the command on (the counter)? Remedies, offers and
-  apologies get written in whichever place the answer picks.
-- **Quote → bind**, the second domain, [specified before building](unsettled/quotes.md).
-  It's the first one where the basis (a price) can change underneath an intent, and the
-  first test of `supersedes`.
-- **What a basis names.** An ETag on a whole aggregate locks too much. A validator per
-  fact (`/customers/{id}/shipping-address`, perhaps a hash, perhaps checked with `HEAD`)
-  may be the wire's version of what DCB tags do on the server.
+- **The weight of the Edge.** Our current guess is the clerk, not the counter: the Edge
+  runs **errands** (what it agrees to take on for a person, knowing the answer may be
+  no), and the domain stays free of the protocol. One errand, written both ways:
+  [edge-weight.md](unsettled/edge-weight.md).
+- **How big is an errand?** Perhaps always small, with one final outcome, and anything
+  long is a chain of errands. Whether withdrawing is an errand of its own, which can be
+  declined, is open too.
+- **What's general?** Three sample domains (the library, insurance, a shop), each
+  written the same way, then compared. What's the same in all three is the library;
+  the rest is the app's.
 
 **Paused**: more browser durability (resending stored intents, one tab at a time, clearing
 on sign-out). If the Edge holds pending intents, the browser only has to keep an intent

@@ -42,10 +42,13 @@ public class ErrandTests(AppFixture app)
         await _host.PutErrand(cookie, id, ErrandsApi.PlaceHold(1001), 202);
         await _host.DecideErrand(id);
 
-        (await _host.GetErrand(cookie, id)).Outcome.ShouldBe(ErrandOutcome.Accepted);
+        var errand = await _host.GetErrand(cookie, id);
+        errand.Outcome.ShouldBe(ErrandOutcome.Accepted);
         var holds = await HoldsOf(patron);
         holds.Length.ShouldBe(1);
         holds[0].Status.ShouldBe(HoldStatus.Placed);
+        // what it made: the client's guess is replaced when memory contains this id
+        errand.Made.ShouldBe(holds[0].Id);
     }
 
     [Fact] // rule 1: a redelivered decision changes nothing
@@ -210,5 +213,21 @@ public class ErrandTests(AppFixture app)
         var decided = await stream.NextOf("intent-decided");
         decided.GetProperty("intentId").GetGuid().ShouldBe(id);
         decided.GetProperty("outcome").GetString().ShouldBe("withdrawn");
+    }
+
+    [Fact] // PROTOCOL §3: an accepted outcome says what it made
+    public async Task accepted_on_the_stream_says_what_it_made()
+    {
+        var (patron, cookie) = await SignedIn();
+        await using var stream = await EventStream.Open(_host, cookie);
+        await stream.NextOf("subscribed");
+
+        var id = Guid.NewGuid();
+        await _host.PutErrand(cookie, id, ErrandsApi.PlaceHold(1001), 202);
+        await _host.DecideErrand(id);
+
+        var decided = await stream.NextOf("intent-decided");
+        decided.GetProperty("outcome").GetString().ShouldBe("accepted");
+        decided.GetProperty("made").GetGuid().ShouldBe((await HoldsOf(patron)).Single().Id);
     }
 }

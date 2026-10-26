@@ -244,6 +244,7 @@ data: {"intentId":"0b6e0c3e-…","outcome":"declined","detail":"You already have
 | `intentId` | string (UUID)                     | The command's `Idempotency-Key`.                            |
 | `outcome`  | `"accepted"` \| `"declined"` \| `"withdrawn"` | Withdrawn: the person took it back first (a cancel that got there before the decision). |
 | `detail`   | string, optional                  | User-presentable, same rules as a problem's `detail`.       |
+| `made`     | string, optional                  | Accepted, and it made something with an id other than the intent's (an errand's hold, §5). Memory will contain this id. |
 
 The client resolves the intent. If the intent is unknown to it (another tab, already
 retired) or already decided, the client ignores the event.
@@ -366,6 +367,7 @@ Content-Type: application/json
   "ask": { "titleId": 42, "branchCode": "MAIN" },
   "outcome": null,
   "reason": null,
+  "made": null,
   "requestedAt": "2026-10-26T14:02:11Z",
   "withdrawableUntil": "2026-10-26T14:02:14Z",
   "endedAt": null
@@ -376,6 +378,8 @@ Content-Type: application/json
   `withdrawn`. Unlike §2, a client needs no per-type mapping to read it.
 - **`reason`** comes with `declined`, and is written for the person, under the same rules
   as a problem's `detail`.
+- **`made`** comes with `accepted` when accepting made something with its own id (a
+  place-hold errand's hold). `intent-decided` carries it too.
 - **`withdrawableUntil`** is when the decision will be made. Until then, withdrawing is
   free, and a receipt can say so ("you can take it back until 14:02").
 - `404` while it isn't recorded, as in §2. `403` when it's someone else's errand: a
@@ -408,9 +412,10 @@ A declined or withdrawn errand changed nothing, so it makes nothing stale.
 
 ### Not yet
 
-- **An errand's id isn't the id of what it makes.** The hold gets its own id, so §1's
-  exact check ("memory contains an item with that id") doesn't work, and a client has no
-  way yet to know when to retire an accepted errand's candidate.
+- **The browser doesn't use `made` yet.** An errand's id isn't the id of what it makes,
+  so §1's exact check ("memory contains an item with that id") needs `made` instead. A
+  later fresh read isn't a substitute: `invalidate` can arrive before `intent-decided`,
+  so a read can show the real hold while the client still holds the guess.
 
 ---
 

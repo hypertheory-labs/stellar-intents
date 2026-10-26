@@ -23,11 +23,11 @@ public class PlaceHoldDecider : IDecide<PlaceHold>
         if (placed >= EvaluateHoldHandler.HoldLimit)
             return Decision.Decline($"You already have {EvaluateHoldHandler.HoldLimit} holds, the limit.");
 
-        // The hold's id is its own; the errand that placed it has another.
+        // The hold's id is its own; the errand that placed it has another, so it says what it made.
         var holdId = Guid.CreateVersion7();
         session.Events.StartStream<Hold>(holdId,
             new HoldRequested(holdId, errand.Requester, ask.TitleId, ask.BranchCode, errand.RequestedAt),
             new HoldPlaced(holdId, DateTimeOffset.UtcNow));
-        return Decision.Accept();
+        return Decision.Accept(made: holdId);
     }
 }

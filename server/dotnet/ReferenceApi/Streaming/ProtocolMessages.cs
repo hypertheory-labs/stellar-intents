@@ -32,7 +32,8 @@ public static class ProtocolEvents
     /// <param name="intentId">The command's Idempotency-Key.</param>
     /// <param name="outcome">Final: an outcome never changes.</param>
     /// <param name="detail">Shown to the user, so written for a person (same rules as a problem's detail).</param>
-    public static ServerSentEvent IntentDecided(string patronId, Guid intentId, IntentOutcome outcome, string? detail = null) =>
+    /// <param name="made">Accepted, and it made something with its own id: memory will contain it.</param>
+    public static ServerSentEvent IntentDecided(string patronId, Guid intentId, IntentOutcome outcome, string? detail = null, Guid? made = null) =>
         new(PatronGroup(patronId), "intent-decided", new
         {
             intentId,
@@ -43,6 +44,7 @@ public static class ProtocolEvents
                 _ => "withdrawn",
             },
             detail,
+            made,
         });
 
     /// <summary>Reads under these keys changed.</summary>

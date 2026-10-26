@@ -13,7 +13,7 @@ public record ErrandRequested(
     string Ask,
     DateTimeOffset RequestedAt,
     DateTimeOffset DecideAt);
-public record ErrandAccepted(Guid ErrandId, DateTimeOffset AcceptedAt);
+public record ErrandAccepted(Guid ErrandId, DateTimeOffset AcceptedAt, Guid? Made = null);
 public record ErrandDeclined(Guid ErrandId, string Reason, DateTimeOffset DeclinedAt);
 public record ErrandWithdrawn(Guid ErrandId, DateTimeOffset WithdrawnAt);
 
@@ -34,6 +34,9 @@ public class Errand : IRevisioned
 
     /// <summary>Null while it's pending; set exactly once.</summary>
     public ErrandOutcome? Outcome { get; set; }
+
+    /// <summary>What accepting it made, if it made something with an id of its own.</summary>
+    public Guid? Made { get; set; }
 
     /// <summary>Why it was declined. Only set when it was.</summary>
     public string? Reason { get; set; }
@@ -60,7 +63,10 @@ public class Errand : IRevisioned
         WithdrawableUntil = e.DecideAt,
     };
 
-    public void Apply(ErrandAccepted e) => End(ErrandOutcome.Accepted, e.AcceptedAt);
+    public void Apply(ErrandAccepted e)
+    {
+        if (End(ErrandOutcome.Accepted, e.AcceptedAt)) Made = e.Made;
+    }
 
     public void Apply(ErrandDeclined e)
     {

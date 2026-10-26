@@ -12,12 +12,18 @@ public abstract record Decision
 {
     private Decision() { }
 
-    public static Decision Accept() => new Accepted();
+    public static Decision Accept() => new Accepted(null);
+
+    /// <param name="made">
+    /// The id of what accepting made (a new hold, say), so the person's browser can tell
+    /// when the real thing has replaced its guess: memory contains this id.
+    /// </param>
+    public static Decision Accept(Guid made) => new Accepted(made);
 
     /// <param name="reason">Shown to the person, so written for one.</param>
     public static Decision Decline(string reason) => new Declined(reason);
 
-    public sealed record Accepted : Decision;
+    public sealed record Accepted(Guid? Made) : Decision;
 
     public sealed record Declined : Decision
     {

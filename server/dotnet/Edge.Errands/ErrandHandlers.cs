@@ -15,7 +15,7 @@ namespace Edge.Errands;
 /// messages and HTTP, never by importing each other (README, "Rules this repo keeps").
 /// The library knows *when* to tell; the app knows *how*.
 /// </remarks>
-public record ErrandEnded(Guid ErrandId, string Type, string Requester, ErrandOutcome Outcome, string? Reason);
+public record ErrandEnded(Guid ErrandId, string Type, string Requester, ErrandOutcome Outcome, string? Reason, Guid? Made = null);
 
 // Public only so Wolverine finds the handlers; the endpoints are the way in.
 public record RequestErrand(Guid Id, string Type, string Requester, string Ask);
@@ -79,14 +79,17 @@ public static class DecideErrandHandler
 
         var decision = await registry.Decide(errand, session, cancellation);
         var now = DateTimeOffset.UtcNow;
-        var ended = decision switch
+        var (ended, happened) = decision switch
         {
-            Decision.Declined declined => new ErrandEnded(errand.Id, errand.Type, errand.Requester, ErrandOutcome.Declined, declined.Reason),
-            _ => new ErrandEnded(errand.Id, errand.Type, errand.Requester, ErrandOutcome.Accepted, null),
+            Decision.Declined d => (
+                new ErrandEnded(errand.Id, errand.Type, errand.Requester, ErrandOutcome.Declined, d.Reason),
+                (object)new ErrandDeclined(errand.Id, d.Reason, now)),
+            Decision.Accepted a => (
+                new ErrandEnded(errand.Id, errand.Type, errand.Requester, ErrandOutcome.Accepted, null, a.Made),
+                new ErrandAccepted(errand.Id, now, a.Made)),
+            _ => throw new InvalidOperationException($"Unknown decision: {decision}"),
         };
-        stream.AppendOne(decision is Decision.Declined d
-            ? new ErrandDeclined(errand.Id, d.Reason, now)
-            : new ErrandAccepted(errand.Id, now));
+        stream.AppendOne(happened);
         await session.SaveChangesAsync(cancellation);
 
         // Cascading: sent only after the save above committed.

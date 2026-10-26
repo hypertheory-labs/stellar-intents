@@ -12,18 +12,20 @@ namespace Edge.Errands;
 /// <summary>An errand as the person sees it: GET /errands/{id}.</summary>
 /// <param name="Outcome">Null while it's pending.</param>
 /// <param name="WithdrawableUntil">Until then, DELETE takes it back for free.</param>
+/// <param name="Made">What accepting it made: memory will contain this id.</param>
 public record ErrandView(
     Guid Id,
     string Type,
     JsonElement Ask,
     ErrandOutcome? Outcome,
     string? Reason,
+    Guid? Made,
     DateTimeOffset RequestedAt,
     DateTimeOffset WithdrawableUntil,
     DateTimeOffset? EndedAt)
 {
     internal static ErrandView Of(Errand e) => new(e.Id, e.Type, JsonDocument.Parse(e.Ask).RootElement,
-        e.Outcome, e.Reason, e.RequestedAt, e.WithdrawableUntil, e.EndedAt);
+        e.Outcome, e.Reason, e.Made, e.RequestedAt, e.WithdrawableUntil, e.EndedAt);
 }
 
 public static class ErrandExtensions

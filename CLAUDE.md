@@ -31,8 +31,8 @@ in cold, so every word in its vocabulary must change code or catch a bug, or it 
   doesn't ack and isn't a peer. Wolverine is in it only so events go out after commit. A
   transport would be the backplane *between* instances, which isn't built.
 - **Errands** live in `server/dotnet/Edge.Errands`: what the Edge takes on for a person.
-  `unsettled/errands.md` is the shape it's built toward. The old `PUT /holds` commands
-  still exist beside `/errands` until errands replace them.
+  `unsettled/errands.md` is the shape it's built toward. Errands are the only way to change
+  anything (`PUT /errands/{id}`); resources are only read.
 
 ## Working here
 

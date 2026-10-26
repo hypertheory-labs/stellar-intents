@@ -23,7 +23,7 @@ public sealed class AppFixture : IAsyncLifetime
             builder.UseSetting("ConnectionStrings:Holds", $"Data Source={_dbPath}");
             // Decisions never happen on their own in tests: a test decides a hold when it
             // wants to (see Decide), so nothing races the assertions.
-            builder.UseSetting("Errands:PlaceHold:WithdrawWindowSeconds", "3600");
+            builder.UseSetting("Errands:Holds:WithdrawWindowSeconds", "3600");
             builder.UseSetting("Events:HeartbeatSeconds", "1");
             builder.ConfigureServices(services =>
             {

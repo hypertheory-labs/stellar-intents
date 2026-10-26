@@ -41,11 +41,12 @@ builder.Host.UseWolverine(opts =>
 builder.Services.AddWolverineHttp();
 
 // What the Edge takes on for a patron (Edge.Errands; unsettled/errands.md). The window is
-// how long a patron can take it back for free before it's decided.
+// how long a patron can take it back for free before it's decided (the same for placing and swapping).
+var holdWindow = TimeSpan.FromSeconds(builder.Configuration.GetValue("Errands:Holds:WithdrawWindowSeconds", 3));
 builder.Services.AddErrands(errands => errands
-    .Add<PlaceHold, PlaceHoldDecider>("place-hold",
-        window: TimeSpan.FromSeconds(builder.Configuration.GetValue("Errands:PlaceHold:WithdrawWindowSeconds", 3)))
-    .Add<CancelHold, CancelHoldDecider>("cancel-hold"));
+    .Add<PlaceHold, PlaceHoldDecider>("place-hold", window: holdWindow)
+    .Add<CancelHold, CancelHoldDecider>("cancel-hold")
+    .Add<SwapHold, SwapHoldDecider>("swap-hold", window: holdWindow));
 
 // who the user is: a cookie session (see Session/SessionSetup.cs)
 builder.Services.AddCookieSession();

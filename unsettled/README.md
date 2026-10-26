@@ -9,6 +9,7 @@ history keeps what's deleted.
 
 | File                                           | What                                                                                                                      |
 | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| [errands.md](errands.md)                       | **Read first.** The shape three sample domains share: eleven rules, what the app plugs in, the wire proposal.             |
 | [protocol-proposed.md](protocol-proposed.md)   | The protocol's unbuilt parts: more remedies, receipts per phase, more durability.                                         |
 | [specifying-intents.md](specifying-intents.md) | IRMTO, a way to write an intent down. Tried twice, below.                                                                 |
 | [holds-in-irmto.md](holds-in-irmto.md)         | The reference's two intents in IRMTO. It found a real bug (a cancel overtaking a hold).                                   |

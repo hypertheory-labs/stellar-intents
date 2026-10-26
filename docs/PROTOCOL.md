@@ -394,8 +394,8 @@ Content-Type: application/json
 
 This is the [lifecycle's](#intent-lifecycle) withdraw, made a request on the errand
 itself instead of a second intent racing the first. **Withdrawing isn't cancelling.**
-Taking a placed hold away is a new errand moving forward, which can be declined; it
-isn't built as an errand yet.
+Taking a placed hold away is a new errand moving forward, which can be declined: in the
+reference, `{ "type": "cancel-hold", "holdId": "…" }`, with no window.
 
 ### Outcomes on the stream
 

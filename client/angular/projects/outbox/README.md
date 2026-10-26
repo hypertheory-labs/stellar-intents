@@ -8,8 +8,6 @@ Built on NgRx Signal Store (`@ngrx/signals`, entities, and events). Imported in 
 workspace as `outbox`, through `tsconfig` paths to source. The wire protocol it speaks
 is [docs/PROTOCOL.md](../../../../docs/PROTOCOL.md). This file is how to use it.
 
-**Phase 1: in memory.** A reload forgets every intent. See [Not yet](#not-yet).
-
 ## The idea in four words
 
 | Word          | Means                                                                         | In code                                             |
@@ -30,10 +28,10 @@ stateDiagram-v2
     [*] --> requested: enqueue()
     requested --> sent: sent at once
     sent --> received: 202 Accepted
-    sent --> decided: other 2xx (accepted), or a 4xx not 401 (declined)
+    sent --> decided: 200 (as its body says), or a 4xx not 401 (declined)
     sent --> unknown: no answer in timeoutMs
     unknown --> received: late 202
-    unknown --> decided: late 2xx or 4xx
+    unknown --> decided: late 200 or 4xx
     sent --> interrupted: no response, 5xx, 401
     interrupted --> sent: resend(), same id
     received --> decided: settle(accepted | declined | withdrawn)
@@ -53,8 +51,9 @@ stateDiagram-v2
 \* Or `sign-in`, for a `401`. Apologies are sorted by what the person can do next: see
 PROTOCOL's Remedies.
 
-**Withdrawn** means the person took it back before it was decided (a cancel that got
-there first). Nothing is owed, so the outbox lets it go as soon as it's announced.
+**Withdrawn** means the person took it back before it was decided
+(`DELETE /errands/{id}`). Nothing is owed, so the outbox lets it go as soon as it's
+announced.
 
 **A decision is final.** A `decided` intent never moves again, except out (retire,
 dismiss). Answers can arrive in any order (the PUT's own answer, a status
@@ -62,8 +61,8 @@ check, a server event), and a late one must not undo what's known.
 
 ## How a hold moves through it
 
-Against the reference server, with `provideOutboxStream`. Rungs one and two (a status
-check) ask with `GET /holds/{id}` instead, and end the same way.
+Against the reference server, with `provideOutboxStream`. Without the stream, a status
+check (`GET /errands/{id}`) finds the outcome instead, and it ends the same way.
 
 ```mermaid
 sequenceDiagram
@@ -77,16 +76,15 @@ sequenceDiagram
     Note over O: id = crypto.randomUUID()<br/>requested, then sent
     O-->>P: [Outbox] intentRequested, intentSent
     Note over P: the table shows the candidate,<br/>labelled as a guess
-    O->>A: PUT /holds/{id}<br/>Idempotency-Key: {id}
+    O->>A: PUT /errands/{id} {type: place-hold, …}<br/>Idempotency-Key: {id}
     A-->>O: 202 Accepted
     O-->>P: [Outbox] intentReceived
-    P->>A: GET /holds (reload its own data)
-    Note over P: the server's row (requested)<br/>replaces the guess: same id
-    Note over A: a few seconds later: decided
-    A-->>O: SSE intent-decided (accepted)
+    Note over A: the withdraw window closes: decided
+    A-->>P: SSE invalidate (the patron's holds)
+    A-->>O: SSE intent-decided (accepted, made: {hold id})
     O-->>P: [Outbox] intentDecided
     P->>A: GET /holds
-    Note over P: the row is now placed
+    Note over P: memory has the made id:<br/>the real row replaces the guess
     P->>O: retire(id)
     O-->>P: [Outbox] intentRetired
 ```
@@ -104,11 +102,11 @@ export const placeHold = defineIntentType<PlaceHoldPayload, Hold>({
   name: 'place-hold', // stored on every intent; keep it stable across deploys
   request: ({ id, payload }) => ({
     method: 'PUT',
-    url: `${API_URL}/holds/${id}`, // the intent's id is the resource's id
-    body: { titleId: payload.titleId, branchCode: payload.branchCode },
+    url: `${API_URL}/errands/${id}`, // the intent's id is the errand's id
+    body: { type: 'place-hold', titleId: payload.titleId, branchCode: payload.branchCode },
   }),
   receipt: ({ payload }) => `We've received your request to place a hold on ${payload.titleName}.`,
-  candidate: ({ id, payload }) => ({ id, titleId: payload.titleId, status: 'requested' }),
+  candidate: ({ id, payload }) => ({ id, titleId: payload.titleId, status: 'placed' }),
   apology: {
     say: ({ payload }, failure) =>
       failure.remedy === 'wait'
@@ -174,13 +172,17 @@ ending the same way:
 
    ```ts
    status: {
-     url: (intent) => `/api/holds/${intent.id}`,
-     outcome: (hold: Hold) =>
-       hold.status === 'placed' ? { outcome: 'accepted' }
-       : hold.status === 'rejected' ? { outcome: 'declined', detail: hold.reason ?? undefined }
+     url: (intent) => `/api/errands/${intent.id}`,
+     outcome: (errand: Errand) =>
+       errand.outcome === 'accepted' ? { outcome: 'accepted', made: errand.made ?? undefined }
+       : errand.outcome === 'declined' ? { outcome: 'declined', detail: errand.reason ?? undefined }
+       : errand.outcome === 'withdrawn' ? { outcome: 'withdrawn' }
        : undefined, // not decided yet
    },
    ```
+
+   Every errand reads the same way, so one `status` serves every type. It also reads a
+   `200` answer to the request itself: a repeat of a declined errand is a `200` too.
 
 2. **Ask when the user comes back to the tab**: `provideOutboxStatusChecks()` in
    app.config. This is the floor: it works with no stream at all.
@@ -201,13 +203,14 @@ protected readonly rows = computed(() =>
 ```
 
 Candidates come first and drop out the moment memory has their id, so the guess and
-the real row never both show. `isCandidate(row)` tells them apart in a template.
+the real row never both show. A candidate's id is the intent's, or, once the outcome
+says what it `made`, that id. `isCandidate(row)` tells them apart in a template.
 
 ```ts
 effect(() => {
-  const accepted = this.myIntents()
-    .filter((i) => i.state.status === 'decided' && i.state.outcome === 'accepted')
-    .map((i) => i.id);
+  const accepted = this.myIntents().filter(
+    (i) => i.state.status === 'decided' && i.state.outcome === 'accepted',
+  );
   const ready = readyToRetire(accepted, this.myHolds.value(), (h) => h.id);
   untracked(() => ready.forEach((id) => this.outbox.retire(id)));
 });
@@ -238,7 +241,7 @@ request.
   decided, though a decision against only after being received), for this tab, at once:
 
   ```ts
-  invalidates: ({ id, payload }) => [`/holds/${id}`, `/holds?patronId=${payload.patronId}`],
+  invalidates: ({ payload }) => [`/holds?patronId=${payload.patronId}`],
   ```
 
   Both arrive as `invalidationEvents.invalidated { keys, from }`, matched with PROTOCOL
@@ -273,7 +276,7 @@ intents are sent but not stored. For tests, pass `storage: memoryIntentStorage()
 | --------------------------- | -------------------------------------------------------------------------------------------------- |
 | `enqueue(type, payload)`    | Creates the intent (new id), publishes `intentRequested`, sends it. Returns the intent.            |
 | `resolve(id, outcome)`      | Records an outcome learned some other way. Ignored for unknown ids and decided intents.            |
-| `settle(id, outcome)`       | The same, as the stream says it: `accepted`, `declined` (with a `detail`), or `withdrawn`. |
+| `settle(id, outcome)`       | The same, as the stream says it: `accepted` (with what it `made`), `declined` (with a `detail`), or `withdrawn`. |
 | `checkStatus(id)`           | Asks the type's `status.url`; settles if the answer is decided. A 404 is "not recorded yet".       |
 | `checkWaiting()`            | `checkStatus` for every `received`, `unknown`, and `interrupted` intent.                           |
 | `resend(id)`                | Sends an `interrupted` intent again, same id. Anything else is ignored.                            |
@@ -289,7 +292,9 @@ intents are sent but not stored. For tests, pass `storage: memoryIntentStorage()
 
 - One `HttpClient.request` per intent, with `Idempotency-Key: {intent.id}` and the
   type's method, url, and body. (Only `POST`, `PUT`, `PATCH`, `DELETE`.)
-- **202** → `received`. **Any other 2xx** → `decided`, accepted.
+- **202** → `received`. **Any other 2xx** → `decided`, as its body says, read by the
+  type's `status.outcome` (a repeat of a declined errand is a `200`). With no body, or no
+  `status`, accepted.
 - **No response, a `5xx`, or a `401`** → `interrupted`: nothing was decided. Remedy
   `try-again` (or `sign-in` for the `401`). It goes again with the **same** id.
 - **Any other error** → `decided`, declined, remedy `no`, with the HTTP status and a
@@ -307,7 +312,10 @@ intents are sent but not stored. For tests, pass `storage: memoryIntentStorage()
 
 - `mergeWithCandidates(memory, candidates, idOf)`: memory plus the candidates not yet
   in it, candidates first. Never edits memory.
-- `readyToRetire(doneIds, memory, idOf)`: which decided intents memory now contains.
+- `readyToRetire(done, memory, idOf)`: the ids of the decided intents whose real item
+  memory now contains.
+- `realIdOf(intent)`: the id the real item has, or will have: what the outcome `made`,
+  or else the intent's own.
 - `isCandidate(item)`: narrows `T | Candidate<T>`.
 
 ### Types
@@ -334,8 +342,8 @@ replace in tests).
 - **Intents are plain, serializable data.** No functions, classes, or `Date`s
   (timestamps are epoch ms), and a `schema` version, so a later phase can store them.
 - **Behavior is registered, never stored.** A stored intent names its type.
-- **The intent's id is the idempotency key, and the real item's id.** That's what
-  makes "has the server's version arrived?" an exact check.
+- **The intent's id is the idempotency key, and the real item's id** unless the outcome
+  says what it `made`. Either way, "has the server's version arrived?" is an exact check.
 - **It never writes the app's data.** Features read their data from their own
   resources, and guesses from here.
 - **A decision is final.**

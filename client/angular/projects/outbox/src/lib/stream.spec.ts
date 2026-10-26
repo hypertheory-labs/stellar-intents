@@ -158,7 +158,7 @@ describe('the event stream (PROTOCOL §3)', () => {
     expect(state.status === 'decided' && state.outcome === 'accepted' && state.made).toBe('h1');
   });
 
-  // unsettled/holds-in-irmto.md: a cancel that got there before the decision
+  // a withdraw (DELETE /errands/{id}) that got there before the decision
   it('withdrawn lets the intent go: no apology, no guess, nothing left to show', () => {
     const ctx = setup();
     const intent = received(ctx);

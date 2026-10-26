@@ -34,10 +34,10 @@ This is a guess about where we are, not a settled design.
    informed, track sessions and pending intents, and deliver receipts and apologies; you
    plug in what happens when._ Two pieces of it exist: `Edge.Errands` (an app writes one
    decider per errand) and `Edge.Sse`.
-4. **A way to specify intents.** [IRMTO](unsettled/specifying-intents.md) (Intent, Rests on,
-   Manifests when, Then, Otherwise) is a way to write down how to be that clerk, when
-   twenty years of ACID trained us to be the other guy. Maybe one day it's executable,
-   for people and AIs to iterate on.
+4. **A way to specify errands, later.** Twenty years of ACID trained us to be the other
+   guy, so how to be the clerk is worth writing down: one day executable, for people and
+   AIs to iterate on. We tried a form for it before the code and set it aside. The code is
+   close to showing what's worth saying, and the language should come from that.
 
 Almost nothing on the wire is invented. It's HTTP (`Idempotency-Key`, `202 Accepted`,
 problem details, `ETag`) and Server-Sent Events, with conventions written down.
@@ -47,7 +47,7 @@ problem details, `ETag`) and Server-Sent Events, with conventions written down.
 | Path                                                               | What                                                                                                                                                                                                         | Status                               |
 | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------ |
 | [`docs/PROTOCOL.md`](docs/PROTOCOL.md)                             | The intent wire protocol: errands, status checks, the event stream, reads, conformance scenarios. Only what's built.                                                                                         | Draft 0.5                            |
-| [`unsettled/`](unsettled)                                          | Ideas not built yet: errands' shape and three sample domains, IRMTO, the protocol's proposed parts. Not decisions.                                                                                           | Speculative                          |
+| [`unsettled/`](unsettled)                                          | Ideas not built yet: errands' shape and three sample domains, the protocol's proposed parts, a backplane. Not decisions.                                                                                     | Speculative                          |
 | [`server/dotnet/Edge.Sse`](server/dotnet/Edge.Sse)                 | Server-Sent Events for the Edge: groups of connections, sent only after commit (Wolverine), heartbeats, an opening event, ends streams on shutdown. Knows nothing about intents.                             | Extracted from the reference, tested |
 | [`server/dotnet/Edge.Errands`](server/dotnet/Edge.Errands)         | Errands at the Edge: `PUT`/`GET`/`DELETE /errands/{id}`, a decision after a declared withdraw window, one outcome, a reason on every decline ([the shape](unsettled/errands.md)). Knows nothing about holds. | Place and cancel a hold, tested      |
 | [`server/dotnet/ReferenceApi`](server/dotnet/ReferenceApi)         | A reference server: library holds on Wolverine + Fisher (event-sourced, SQLite), .NET 10. Holds change only through errands; `/holds` is reads.                                                              | Protocol §0–4, tested                |

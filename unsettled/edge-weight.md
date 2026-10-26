@@ -130,5 +130,5 @@ belong to the errand, not the hold.
   The errand doesn't touch reads. The domain shouldn't know about URLs. That leaves a third
   place, or deriving them (the "LATER" in `HoldKeys`). Unanswered here.
 - **What's generic and what's holds.** One domain can't say. Writing quote → bind the
-  clerk's way, then diffing, is the next step ([quotes.md](quotes.md)).
+  clerk's way, then diffing, is the next step (done: [errands-insurance.md](errands-insurance.md)).
 - **Where the Edge runs.** Here it's a seam in one process, not a deployment.

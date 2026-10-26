@@ -3,7 +3,7 @@
 **2026-10-26.** The second of three sample domains, written the same way as
 [the library](errands-library.md). Sketches, not code. The business answers are
 **invented** to show the shape; they aren't any insurer's. The bind errand is
-[quotes.md](quotes.md) rewritten as an errand.
+an earlier quote → bind sketch (`quotes.md`, since deleted) rewritten as an errand.
 
 Errands are addressed as resources of their own here (`PUT /errands/{id}`,
 `DELETE /errands/{id}` to withdraw), which is the idea under test from the cart. Reads
@@ -34,7 +34,7 @@ second, and I think that's right. The rule that falls out:
 > **Accepted means they got what they asked for, or better. Anything less is declined,
 > with an offer.**
 
-`quotes.md`'s "accepted on terms" (the premium moved under 2%, and the difference was
+The old sketch's "accepted on terms" (the premium moved under 2%, and the difference was
 waived) passes that rule: they got the quoted premium, which is what they asked for.
 Liability-only doesn't: it's less, so the person has to choose it. The person always
 consents to getting less.

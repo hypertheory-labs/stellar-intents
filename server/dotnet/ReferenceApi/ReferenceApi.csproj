@@ -22,6 +22,7 @@
     </ItemGroup>
 
     <ItemGroup>
+      <ProjectReference Include="..\Edge.Errands\Edge.Errands.csproj" />
       <ProjectReference Include="..\Edge.Sse\Edge.Sse.csproj" />
     </ItemGroup>
 

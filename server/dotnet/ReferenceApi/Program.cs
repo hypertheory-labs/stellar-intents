@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Edge.Errands;
 using Edge.Sse;
 using ReferenceApi.Streaming;
 using ReferenceApi.Dev;
@@ -34,8 +35,16 @@ builder.Host.UseWolverine(opts =>
     opts.Policies.AutoApplyTransactions();
     // events for the open SSE streams, sent after commit (Edge.Sse)
     opts.UseServerSentEvents();
+    // errands' handlers (Edge.Errands)
+    opts.UseErrands();
 });
 builder.Services.AddWolverineHttp();
+
+// What the Edge takes on for a patron (Edge.Errands; unsettled/errands.md). The window is
+// how long a patron can take it back for free before it's decided.
+builder.Services.AddErrands(errands => errands
+    .Add<PlaceHold, PlaceHoldDecider>("place-hold",
+        window: TimeSpan.FromSeconds(builder.Configuration.GetValue("Holds:DecisionDelaySeconds", 3))));
 
 // who the user is: a cookie session (see Session/SessionSetup.cs)
 builder.Services.AddCookieSession();
@@ -83,6 +92,10 @@ app.MapServerSentEvents("/events", context =>
     .RequireAuthorization()
     .WithTags("Events")
     .WithSummary("The signed-in patron's event stream (Server-Sent Events). 401 without a session.");
+// PUT asks, GET reads, DELETE withdraws (Edge.Errands). Whoever is signed in is asking.
+app.MapErrands("/errands", context => context.User.PatronId())
+    .RequireAuthorization()
+    .WithTags("Errands");
 app.MapDevReset(); // Development only; see Dev/DevReset.cs
 app.MapDevSignIn(); // Development only; see Session/DevSignIn.cs
 app.Run();

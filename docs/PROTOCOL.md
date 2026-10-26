@@ -317,7 +317,7 @@ Plain `GET`s. The protocol adds only:
 
 The same intent, addressed differently: to `/errands/{id}`, not to the resource it
 changes. The reference server does this for placing a hold, **beside** §1's
-`PUT /holds/{id}`. The Angular client doesn't use it yet. §0–3 apply unchanged (the
+`PUT /holds/{id}`, and the demo places and cancels holds this way. §0–3 apply unchanged (the
 session, `Idempotency-Key`, problem details, the stream); this section says only what's
 different.
 
@@ -412,8 +412,8 @@ A declined or withdrawn errand changed nothing, so it makes nothing stale.
 
 ### Not yet
 
-- **The demo doesn't send errands yet.** The Angular outbox understands `made`, but the
-  demo still places and cancels holds through `/holds`.
+- **The old commands are still there.** `PUT` and `DELETE /holds/{id}` (§1's examples)
+  work beside errands, though nothing in this repo sends them now. They're to be removed.
 
 ---
 

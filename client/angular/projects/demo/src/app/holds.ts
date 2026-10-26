@@ -24,11 +24,37 @@ export const TITLES = [
 export const titleName = (id: number) => TITLES.find((t) => t.id === id)?.name ?? `title ${id}`;
 
 /** Which reads a change to a hold makes stale. The same keys the server sends (HoldKeys.cs). */
-const holdKeys = (holdId: string, patronId: string, titleId: number) => [
-  `/holds/${holdId}`,
+const holdKeys = (patronId: string, titleId: number) => [
   `/holds?patronId=${patronId}`,
   `/holds?titleId=${titleId}`,
 ];
+
+/** An errand as the server represents it (GET /errands/{id}, PROTOCOL §5). */
+interface Errand {
+  id: string;
+  type: string;
+  outcome: 'accepted' | 'declined' | 'withdrawn' | null;
+  reason: string | null;
+  made: string | null;
+  withdrawableUntil: string;
+}
+
+/** An errand's status check: its outcome is in the representation, whatever the type. */
+const errandStatus = {
+  url: ({ id }: { id: string }) => `/api/errands/${id}`,
+  outcome: (errand: Errand) => {
+    switch (errand.outcome) {
+      case 'accepted':
+        return { outcome: 'accepted', made: errand.made ?? undefined } as const;
+      case 'declined':
+        return { outcome: 'declined', detail: errand.reason ?? undefined } as const;
+      case 'withdrawn':
+        return { outcome: 'withdrawn' } as const;
+      default:
+        return undefined; // pending
+    }
+  },
+};
 
 export interface PlaceHoldPayload {
   patronId: string;
@@ -36,14 +62,17 @@ export interface PlaceHoldPayload {
   branchCode: string;
 }
 
-/** Placing a hold: a create. The intent's id is the hold's id. */
-export const placeHold = defineIntentType<PlaceHoldPayload, Hold, Hold>({
+/**
+ * Placing a hold: an errand (PROTOCOL §5). The intent's id is the errand's; the hold gets
+ * its own, which the outcome says (`made`), and the guess is replaced when memory has it.
+ */
+export const placeHold = defineIntentType<PlaceHoldPayload, Hold, Errand>({
   name: 'place-hold',
   // patronId is in the payload for the read keys only. The server takes it from the session.
   request: ({ id, payload: { titleId, branchCode } }) => ({
     method: 'PUT',
-    url: `/api/holds/${id}`,
-    body: { titleId, branchCode },
+    url: `/api/errands/${id}`,
+    body: { type: 'place-hold', titleId, branchCode },
   }),
   receipt: ({ payload }) =>
     `We've received your request to place a hold on ${titleName(payload.titleId)}.`,
@@ -73,22 +102,8 @@ export const placeHold = defineIntentType<PlaceHoldPayload, Hold, Hold>({
     actions: ['retry'],
   },
   timeoutMs: 10_000,
-  status: {
-    url: ({ id }) => `/api/holds/${id}`,
-    outcome: (hold) => {
-      switch (hold.status) {
-        case 'placed':
-          return { outcome: 'accepted' };
-        case 'rejected':
-          return { outcome: 'declined', detail: hold.reason ?? undefined };
-        case 'cancelled': // cancelled before it was decided; the server says the same
-          return { outcome: 'withdrawn' };
-        case 'requested':
-          return undefined;
-      }
-    },
-  },
-  invalidates: ({ id, payload }) => holdKeys(id, payload.patronId, payload.titleId),
+  status: errandStatus,
+  invalidates: ({ payload }) => holdKeys(payload.patronId, payload.titleId),
 });
 
 export interface CancelHoldPayload {
@@ -98,13 +113,17 @@ export interface CancelHoldPayload {
 }
 
 /**
- * Cancelling a hold: not a create, so the intent's id is NOT the hold's id, and "has
- * memory got it?" doesn't apply. Its promotion is the opposite: done, and the hold is
- * gone from memory (see App).
+ * Cancelling a placed hold: a forward errand, not an undo. It makes nothing, so there's no
+ * guess. Its promotion is the opposite of placing: done, and the hold is gone from memory
+ * (see App).
  */
-export const cancelHold = defineIntentType<CancelHoldPayload, never, Hold>({
+export const cancelHold = defineIntentType<CancelHoldPayload, never, Errand>({
   name: 'cancel-hold',
-  request: ({ payload }) => ({ method: 'DELETE', url: `/api/holds/${payload.holdId}` }),
+  request: ({ id, payload: { holdId } }) => ({
+    method: 'PUT',
+    url: `/api/errands/${id}`,
+    body: { type: 'cancel-hold', holdId },
+  }),
   receipt: ({ payload }) =>
     `We've received your request to cancel your hold on ${titleName(payload.titleId)}.`,
   apology: {
@@ -112,19 +131,6 @@ export const cancelHold = defineIntentType<CancelHoldPayload, never, Hold>({
       `We couldn't cancel your hold on ${titleName(payload.titleId)}${failure.detail ? `: ${failure.detail}` : '.'}`,
     actions: [],
   },
-  // The read that confirms a cancel: the hold itself says "cancelled". Without this, a
-  // cancel whose answer was lost stayed unknown forever (unsettled/holds-in-irmto.md).
-  status: {
-    url: ({ payload }) => `/api/holds/${payload.holdId}`,
-    outcome: (hold) =>
-      hold.status === 'cancelled'
-        ? { outcome: 'accepted' }
-        : hold.status === 'rejected'
-          ? {
-              outcome: 'declined',
-              detail: "This hold was never placed, so there's nothing to cancel.",
-            }
-          : undefined,
-  },
-  invalidates: ({ payload }) => holdKeys(payload.holdId, payload.patronId, payload.titleId),
+  status: errandStatus,
+  invalidates: ({ payload }) => holdKeys(payload.patronId, payload.titleId),
 });

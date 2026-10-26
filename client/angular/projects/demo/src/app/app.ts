@@ -262,14 +262,9 @@ export class App {
       const cancelled = this.cancelling().filter(
         (c) => done.some((i) => i.id === c.intentId) && !inMemory.has(c.holdId),
       );
-      untracked(() => {
-        [...placed, ...cancelled.map((c) => c.intentId)].forEach((id) => this.outbox.retire(id));
-        // A hold cancelled before it was decided: its place-hold intent (same id as the
-        // hold) is over too. The server will say `withdrawn` when it gets to the decision,
-        // but until then the guess would come back, so let it go now. Only this app knows
-        // the cancel overtakes that intent; nothing on the wire says so yet.
-        cancelled.forEach((c) => this.outbox.dismiss(c.holdId));
-      });
+      untracked(() =>
+        [...placed, ...cancelled.map((c) => c.intentId)].forEach((id) => this.outbox.retire(id)),
+      );
     });
   }
 

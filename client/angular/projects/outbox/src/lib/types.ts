@@ -44,7 +44,13 @@ export type IntentState =
   | { readonly status: 'sent'; readonly sentAt: number }
   | { readonly status: 'unknown'; readonly sentAt: number }
   | { readonly status: 'received'; readonly receivedAt: number }
-  | { readonly status: 'decided'; readonly decidedAt: number; readonly outcome: 'accepted' }
+  | {
+      readonly status: 'decided';
+      readonly decidedAt: number;
+      readonly outcome: 'accepted';
+      /** The id of what it made, when that isn't the intent's own (an errand's hold). */
+      readonly made?: string;
+    }
   /** Decided against. The apology's remedy is `no`. */
   | {
       readonly status: 'decided';
@@ -97,8 +103,13 @@ export interface Failure {
  */
 export interface Candidate<T> {
   readonly kind: 'candidate';
-  /** The intent this guess belongs to; also the id the real item will have. */
+  /** The intent this guess belongs to. */
   readonly intentId: string;
+  /**
+   * The id the real item has, or will have: the intent's own, unless its outcome said it
+   * made something else (PROTOCOL §3, `made`).
+   */
+  readonly id: string;
   readonly value: T;
 }
 
@@ -115,7 +126,7 @@ export interface IntentRequest {
 
 /** How it ended, as a status check or the server's event stream reports it (PROTOCOL §3). */
 export type Outcome =
-  | { readonly outcome: 'accepted' }
+  | { readonly outcome: 'accepted'; readonly made?: string }
   | { readonly outcome: 'declined'; readonly detail?: string }
   | { readonly outcome: 'withdrawn' };
 

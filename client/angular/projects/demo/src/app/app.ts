@@ -254,7 +254,7 @@ export class App {
         .entities()
         .filter((i) => i.state.status === 'decided' && i.state.outcome === 'accepted');
       const placed = readyToRetire(
-        done.filter((i) => i.type === placeHold.name).map((i) => i.id),
+        done.filter((i) => i.type === placeHold.name),
         memory,
         (h) => h.id,
       );

@@ -412,10 +412,8 @@ A declined or withdrawn errand changed nothing, so it makes nothing stale.
 
 ### Not yet
 
-- **The browser doesn't use `made` yet.** An errand's id isn't the id of what it makes,
-  so §1's exact check ("memory contains an item with that id") needs `made` instead. A
-  later fresh read isn't a substitute: `invalidate` can arrive before `intent-decided`,
-  so a read can show the real hold while the client still holds the guess.
+- **The demo doesn't send errands yet.** The Angular outbox understands `made`, but the
+  demo still places and cancels holds through `/holds`.
 
 ---
 
@@ -445,7 +443,9 @@ What a conforming client has, in any framework. Names are suggestions.
    time-based freshness.
 7. **Merge for display.** What the screen shows is memory plus the candidates whose id
    isn't in memory yet, candidates first, with candidates visibly marked as guesses. When
-   an accepted intent's id appears in memory, retire the intent.
+   an accepted intent's id appears in memory, retire the intent. If its outcome said what
+   it `made` (§3), that's the id to look for instead. Not "the next read after the
+   outcome": `invalidate` can arrive first, and the guess and the real item would both show.
 8. **Storage (optional).** Keeps intents across page loads. See
    [Durability](#durability).
 
@@ -557,7 +557,8 @@ implementation can be checked without reading the reference code.
 17. A declined intent shows no candidate, and shows its apology. A withdrawn one shows
     nothing at all. An `interrupted`
     one keeps its candidate: nothing has been decided.
-18. An accepted intent whose id is in memory is retired.
+18. An accepted intent whose id is in memory is retired. One whose outcome said it
+    `made: "h1"` is retired when memory contains `h1`, and not before.
 
 **Durability**
 

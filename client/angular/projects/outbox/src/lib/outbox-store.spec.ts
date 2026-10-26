@@ -208,7 +208,12 @@ describe('OutboxStore', () => {
 
     expect(store.receipts()[0].text).toBe("We've received your request to place a hold on Dune.");
     expect(store.candidates(placeHold)).toEqual([
-      { kind: 'candidate', intentId: intent.id, value: { id: intent.id, title: 'Dune' } },
+      {
+        kind: 'candidate',
+        intentId: intent.id,
+        id: intent.id,
+        value: { id: intent.id, title: 'Dune' },
+      },
     ]);
 
     http.expectOne(`/holds/${intent.id}`).flush(null, { status: 409, statusText: 'Conflict' });

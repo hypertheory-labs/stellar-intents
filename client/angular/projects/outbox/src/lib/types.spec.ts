@@ -64,6 +64,7 @@ describe('outbox types', () => {
     const guess: Candidate<Hold> = {
       kind: 'candidate',
       intentId: intent.id,
+      id: intent.id,
       value: placeHold.candidate!(intent),
     };
     expect(guess.value.id).toBe(intent.id); // the real hold will have this id

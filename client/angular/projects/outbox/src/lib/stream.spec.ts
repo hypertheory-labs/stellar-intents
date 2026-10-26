@@ -148,6 +148,16 @@ describe('the event stream (PROTOCOL §3)', () => {
     expect(ctx.store.apologies()[0].message).toBe('You already have 3 holds, the limit.');
   });
 
+  it('an accepted intent keeps what it made, and its guess takes that id', () => {
+    const ctx = setup();
+    const intent = received(ctx);
+
+    ctx.latest().emit('intent-decided', { intentId: intent.id, outcome: 'accepted', made: 'h1' });
+
+    const state = ctx.store.entityMap()[intent.id].state;
+    expect(state.status === 'decided' && state.outcome === 'accepted' && state.made).toBe('h1');
+  });
+
   // unsettled/holds-in-irmto.md: a cancel that got there before the decision
   it('withdrawn lets the intent go: no apology, no guess, nothing left to show', () => {
     const ctx = setup();

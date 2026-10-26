@@ -12,6 +12,7 @@ import { injectDispatch } from '@ngrx/signals/events';
 import { outboxEvents } from './events';
 import { INTENT_STORAGE } from './intent-storage';
 import { invalidationEvents } from './invalidation';
+import { realIdOf } from './promotion';
 import { AnyIntentType, INTENT_TYPES } from './registry';
 import {
   ApologyAction,
@@ -160,7 +161,9 @@ export const OutboxStore = signalStore(
               outcome: 'declined',
               failure: { remedy: 'no', detail: outcome.detail },
             }
-          : { status: 'decided', decidedAt, outcome: outcome.outcome },
+          : outcome.outcome === 'accepted'
+            ? { status: 'decided', decidedAt, outcome: 'accepted', made: outcome.made }
+            : { status: 'decided', decidedAt, outcome: 'withdrawn' },
       );
     }
 
@@ -277,6 +280,7 @@ export const OutboxStore = signalStore(
           .map((intent) => ({
             kind: 'candidate',
             intentId: intent.id,
+            id: realIdOf(intent),
             value: type.candidate!(intent as Intent<never>),
           }));
       },
@@ -383,9 +387,7 @@ function serverRecorded(from: IntentState, to: IntentState) {
     case 'received':
       return true;
     case 'decided':
-      return (
-        to.outcome === 'accepted' || from.status === 'received' || from.status === 'unknown'
-      );
+      return to.outcome === 'accepted' || from.status === 'received' || from.status === 'unknown';
     default:
       return false;
   }

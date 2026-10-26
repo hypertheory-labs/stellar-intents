@@ -144,10 +144,19 @@ function follow({
       dispatch.subscribed();
     });
     opened.addEventListener('intent-decided', (event) => {
-      const decided = parse<{ intentId: string; outcome: string; detail?: string | null }>(event);
+      const decided = parse<{
+        intentId: string;
+        outcome: string;
+        detail?: string | null;
+        made?: string | null;
+      }>(event);
       if (!decided) return;
       switch (decided.outcome) {
         case 'accepted':
+          return outbox.settle(decided.intentId, {
+            outcome: 'accepted',
+            made: decided.made ?? undefined,
+          });
         case 'withdrawn':
           return outbox.settle(decided.intentId, { outcome: decided.outcome });
         case 'declined':

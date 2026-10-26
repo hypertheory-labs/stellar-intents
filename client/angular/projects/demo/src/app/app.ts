@@ -117,13 +117,10 @@ interface Row {
                       cancelling…
                     } @else {
                       {{ row.hold.status }}
-                      @if (row.hold.reason) {
-                        : {{ row.hold.reason }}
-                      }
                     }
                   </td>
                   <td>
-                    @if (!row.guess && !row.cancelling && row.hold.status !== 'rejected') {
+                    @if (!row.guess && !row.cancelling) {
                       <button type="button" (click)="cancel(row.hold)">Cancel</button>
                     }
                   </td>

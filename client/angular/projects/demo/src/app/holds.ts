@@ -7,10 +7,9 @@ export interface Hold {
   patronId: string;
   titleId: number;
   branchCode: string;
-  status: 'requested' | 'placed' | 'rejected' | 'cancelled';
-  reason: string | null;
-  requestedAt: string;
-  decidedAt: string | null;
+  status: 'placed' | 'cancelled';
+  placedAt: string;
+  cancelledAt: string | null;
 }
 
 /** The seeded titles (server/dotnet/ReferenceApi/Holds/SeedHolds.cs). There's no titles API. */
@@ -76,14 +75,14 @@ export const placeHold = defineIntentType<PlaceHoldPayload, Hold, Errand>({
   }),
   receipt: ({ payload }) =>
     `We've received your request to place a hold on ${titleName(payload.titleId)}.`,
+  // Shaped like the hold it would become; the screen marks it as a guess.
   candidate: ({ id, payload, requestedAt }) => ({
     id,
     version: 0,
     ...payload,
-    status: 'requested',
-    reason: null,
-    requestedAt: new Date(requestedAt).toISOString(),
-    decidedAt: null,
+    status: 'placed',
+    placedAt: new Date(requestedAt).toISOString(),
+    cancelledAt: null,
   }),
   apology: {
     say: ({ payload }, failure) => {

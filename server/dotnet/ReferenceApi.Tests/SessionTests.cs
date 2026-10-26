@@ -49,7 +49,7 @@ public class SessionTests(AppFixture app)
         var cookie = await _host.SignIn(HoldsApi.NewPatron());
         var result = await _host.Scenario(s =>
         {
-            s.Put.Json(new PlaceHold(1001, "CEN")).ToUrl($"/holds/{Guid.NewGuid()}");
+            s.Put.Json(ErrandsApi.PlaceHold(1001)).ToUrl($"/errands/{Guid.NewGuid()}");
             s.WithRequestHeader("Cookie", cookie);
             s.StatusCodeShouldBe(400);
         });

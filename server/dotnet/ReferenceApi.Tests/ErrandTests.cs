@@ -156,6 +156,28 @@ public class ErrandTests(AppFixture app)
         await _host.PutErrand(cookie, id, ErrandsApi.PlaceHold(1006), 409);
     }
 
+    [Fact] // conformance 7, across patrons: someone else's id is "a different body"
+    public async Task the_same_id_from_another_patron_is_a_conflict()
+    {
+        var (_, cookie) = await SignedIn();
+        var (_, other) = await SignedIn();
+        var id = Guid.NewGuid();
+        await _host.PutErrand(cookie, id, ErrandsApi.PlaceHold(1001), 202);
+        await _host.PutErrand(other, id, ErrandsApi.PlaceHold(1001), 409);
+    }
+
+    [Fact] // §2: not recorded yet is a 404, not an outcome
+    public async Task a_status_check_for_an_unknown_id_is_404()
+    {
+        var (_, cookie) = await SignedIn();
+        await _host.Scenario(s =>
+        {
+            s.Get.Url($"/errands/{Guid.NewGuid()}");
+            s.WithRequestHeader("Cookie", cookie);
+            s.StatusCodeShouldBe(404);
+        });
+    }
+
     [Fact] // closed: an errand nobody registered isn't one we do
     public async Task an_unknown_type_is_400()
     {

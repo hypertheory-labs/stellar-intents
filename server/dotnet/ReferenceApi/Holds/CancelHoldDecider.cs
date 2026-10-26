@@ -10,8 +10,8 @@ public record CancelHold(Guid HoldId);
 /// <remarks>
 /// WHY its own errand, and not withdrawing the place-hold errand: withdrawing happens only
 /// before a decision. Once the hold is placed, it existed, and giving it up moves forward
-/// and can be declined (unsettled/errands.md, rule 6). DELETE /holds/{id} did both jobs,
-/// which is how the cancel-first bug was possible.
+/// and can be declined (unsettled/errands.md, rule 6). The old DELETE /holds/{id} did
+/// both jobs, which is how the cancel-first bug was possible.
 ///
 /// WHY no window: nothing is gained by waiting. The reason the place-hold errand waits
 /// (to be taken back for free) doesn't apply to giving something up.
@@ -25,17 +25,9 @@ public class CancelHoldDecider : IDecide<CancelHold>
         if (hold is null || hold.PatronId != errand.Requester)
             return Decision.Decline("That isn't one of your holds.");
 
-        switch (hold.Status)
-        {
-            // What they asked for is already true (rule 2: what was asked, or better).
-            case HoldStatus.Cancelled:
-                return Decision.Accept();
-            case HoldStatus.Placed:
-                session.Events.Append(hold.Id, new HoldCancelled(hold.Id, DateTimeOffset.UtcNow));
-                return Decision.Accept();
-            // Only the old PUT /holds path leaves a hold requested or rejected.
-            default:
-                return Decision.Decline("This hold was never placed, so there's nothing to cancel.");
-        }
+        // Already cancelled: what they asked for is already true (rule 2: what was asked, or better).
+        if (hold.Status == HoldStatus.Placed)
+            session.Events.Append(hold.Id, new HoldCancelled(hold.Id, DateTimeOffset.UtcNow));
+        return Decision.Accept();
     }
 }

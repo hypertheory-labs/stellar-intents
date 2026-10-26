@@ -24,9 +24,7 @@ public class SeedHolds : IInitialData
             {
                 var id = Guid.CreateVersion7();
                 var at = placedAt.AddDays(i * 2);
-                session.Events.StartStream<Hold>(id,
-                    new HoldRequested(id, $"P{patron++}", titleId, "CEN", at),
-                    new HoldPlaced(id, at.AddMinutes(1)));
+                session.Events.StartStream<Hold>(id, new HoldPlaced(id, $"P{patron++}", titleId, "CEN", at));
             }
         }
         await session.SaveChangesAsync(cancellation);

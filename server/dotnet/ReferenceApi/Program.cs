@@ -44,7 +44,7 @@ builder.Services.AddWolverineHttp();
 // how long a patron can take it back for free before it's decided.
 builder.Services.AddErrands(errands => errands
     .Add<PlaceHold, PlaceHoldDecider>("place-hold",
-        window: TimeSpan.FromSeconds(builder.Configuration.GetValue("Holds:DecisionDelaySeconds", 3)))
+        window: TimeSpan.FromSeconds(builder.Configuration.GetValue("Errands:PlaceHold:WithdrawWindowSeconds", 3)))
     .Add<CancelHold, CancelHoldDecider>("cancel-hold"));
 
 // who the user is: a cookie session (see Session/SessionSetup.cs)

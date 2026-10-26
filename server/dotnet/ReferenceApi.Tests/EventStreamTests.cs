@@ -1,6 +1,5 @@
 using System.Text.Json;
 using Alba;
-using ReferenceApi.Holds;
 
 namespace ReferenceApi.Tests;
 
@@ -35,62 +34,22 @@ public class EventStreamTests(AppFixture app)
     }
 
     [Fact]
-    public async Task a_placed_hold_is_an_intent_decided_accepted()
-    {
-        var patron = HoldsApi.NewPatron();
-        await using var stream = await EventStream.Open(_host, await _host.SignIn(patron));
-        await stream.NextOf("subscribed");
-
-        var id = Guid.NewGuid();
-        await _host.PlaceHold(patron, id, new PlaceHold(1001, "CEN"), 202);
-        await _host.Decide(id);
-
-        var decided = await stream.NextOf("intent-decided");
-        decided.GetProperty("intentId").GetGuid().ShouldBe(id);
-        decided.GetProperty("outcome").GetString().ShouldBe("accepted");
-    }
-
-    [Fact] // unsettled/holds-in-irmto.md: a cancel that overtakes the placement
-    public async Task a_hold_cancelled_before_its_decision_is_withdrawn()
+    public async Task a_declined_errand_is_an_intent_decided_with_the_reason()
     {
         var patron = HoldsApi.NewPatron();
         var cookie = await _host.SignIn(patron);
-        await using var stream = await EventStream.Open(_host, cookie);
-        await stream.NextOf("subscribed");
-
-        var id = Guid.NewGuid();
-        await _host.PlaceHold(patron, id, new PlaceHold(1001, "CEN"), 202);
-        await _host.Scenario(s =>
-        {
-            s.Delete.Url($"/holds/{id}");
-            s.WithRequestHeader("Idempotency-Key", Guid.NewGuid().ToString());
-            s.WithRequestHeader("Cookie", cookie);
-            s.StatusCodeShouldBe(204);
-        });
-        await _host.Decide(id);
-
-        var decided = await stream.NextOf("intent-decided");
-        decided.GetProperty("intentId").GetGuid().ShouldBe(id);
-        decided.GetProperty("outcome").GetString().ShouldBe("withdrawn");
-        decided.GetProperty("detail").GetString().ShouldBe(EvaluateHoldHandler.CancelledFirst);
-    }
-
-    [Fact]
-    public async Task a_rejected_hold_is_declined_with_the_reason()
-    {
-        var patron = HoldsApi.NewPatron();
         foreach (var title in new[] { 1001, 1005, 1006 })
         {
             var placed = Guid.NewGuid();
-            await _host.PlaceHold(patron, placed, new PlaceHold(title, "CEN"), 202);
-            await _host.Decide(placed);
+            await _host.PutErrand(cookie, placed, ErrandsApi.PlaceHold(title), 202);
+            await _host.DecideErrand(placed);
         }
-        await using var stream = await EventStream.Open(_host, await _host.SignIn(patron));
+        await using var stream = await EventStream.Open(_host, cookie);
         await stream.NextOf("subscribed");
 
         var fourth = Guid.NewGuid();
-        await _host.PlaceHold(patron, fourth, new PlaceHold(1010, "CEN"), 202);
-        await _host.Decide(fourth);
+        await _host.PutErrand(cookie, fourth, ErrandsApi.PlaceHold(1010), 202);
+        await _host.DecideErrand(fourth);
 
         var decided = await stream.NextOf("intent-decided");
         decided.GetProperty("intentId").GetGuid().ShouldBe(fourth);
@@ -101,16 +60,15 @@ public class EventStreamTests(AppFixture app)
     [Fact] // stream rules: fan out per connection
     public async Task two_tabs_both_hear_the_decision()
     {
-        var patron = HoldsApi.NewPatron();
-        var cookie = await _host.SignIn(patron);
+        var cookie = await _host.SignIn(HoldsApi.NewPatron());
         await using var tab1 = await EventStream.Open(_host, cookie);
         await using var tab2 = await EventStream.Open(_host, cookie);
         await tab1.NextOf("subscribed");
         await tab2.NextOf("subscribed");
 
         var id = Guid.NewGuid();
-        await _host.PlaceHold(patron, id, new PlaceHold(1001, "CEN"), 202);
-        await _host.Decide(id);
+        await _host.PutErrand(cookie, id, ErrandsApi.PlaceHold(1001), 202);
+        await _host.DecideErrand(id);
 
         (await tab1.NextOf("intent-decided")).GetProperty("intentId").GetGuid().ShouldBe(id);
         (await tab2.NextOf("intent-decided")).GetProperty("intentId").GetGuid().ShouldBe(id);
@@ -120,11 +78,13 @@ public class EventStreamTests(AppFixture app)
     public async Task the_patron_hears_which_of_their_reads_changed()
     {
         var patron = HoldsApi.NewPatron();
-        await using var stream = await EventStream.Open(_host, await _host.SignIn(patron));
+        var cookie = await _host.SignIn(patron);
+        await using var stream = await EventStream.Open(_host, cookie);
         await stream.NextOf("subscribed");
 
         var id = Guid.NewGuid();
-        await _host.PlaceHold(patron, id, new PlaceHold(1001, "CEN"), 202);
+        await _host.PutErrand(cookie, id, ErrandsApi.PlaceHold(1001), 202);
+        await _host.DecideErrand(id);
 
         var keys = (await stream.AllOf("invalidate", TimeSpan.FromSeconds(1.5))).SelectMany(Keys).ToList();
         keys.ShouldContain($"/holds?patronId={patron}");
@@ -135,12 +95,13 @@ public class EventStreamTests(AppFixture app)
     public async Task someone_else_hears_the_wait_list_changed_but_not_the_decision()
     {
         var asker = HoldsApi.NewPatron();
+        var askerCookie = await _host.SignIn(asker);
         await using var someoneElse = await EventStream.Open(_host, await _host.SignIn(HoldsApi.NewPatron()));
         await someoneElse.NextOf("subscribed");
 
         var id = Guid.NewGuid();
-        await _host.PlaceHold(asker, id, new PlaceHold(1006, "CEN"), 202);
-        await _host.Decide(id);
+        await _host.PutErrand(askerCookie, id, ErrandsApi.PlaceHold(1006), 202);
+        await _host.DecideErrand(id);
 
         var heard = new List<string>();
         var until = DateTime.UtcNow + TimeSpan.FromSeconds(1.5);

@@ -17,8 +17,8 @@ namespace ReferenceApi.Streaming;
 
 /// <summary>How an intent ended. Final either way.</summary>
 /// <remarks>
-/// Withdrawn: the person took it back before it was decided (here, a cancel that got there
-/// first). Not a decision against them, so the client owes no apology.
+/// Withdrawn: the person took it back before it was decided (DELETE /errands/{id}). Not a
+/// decision against them, so the client owes no apology.
 /// </remarks>
 public enum IntentOutcome { Accepted, Declined, Withdrawn }
 

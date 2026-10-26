@@ -65,9 +65,7 @@ public class InvalidationTests(AppFixture app)
         var holdId = Guid.NewGuid();
         await using (var session = _host.Services.GetRequiredService<IDocumentStore>().LightweightSession())
         {
-            session.Events.StartStream<Hold>(holdId,
-                new HoldRequested(holdId, patron, 1001, "CEN", DateTimeOffset.UtcNow),
-                new HoldPlaced(holdId, DateTimeOffset.UtcNow));
+            session.Events.StartStream<Hold>(holdId, new HoldPlaced(holdId, patron, 1001, "CEN", DateTimeOffset.UtcNow));
             await session.SaveChangesAsync();
         }
 

@@ -69,9 +69,6 @@ public static class HoldEndpoints
 
         var hold = Hold.Create(requested);
         hold.Version = 1;
-        // A requested hold already shows in its patron's list and its title's wait list.
-        // Enlisted like the decision message: sent only if this commits.
-        foreach (var invalidate in HoldKeys.Changed(hold)) await bus.PublishAsync(invalidate);
         response.Headers.ETag = ETagFor(hold);
         return Results.Accepted($"/holds/{id}", hold);
     }
@@ -100,7 +97,7 @@ public static class HoldEndpoints
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
-    public static async Task<IResult> Cancel(Guid id, ClaimsPrincipal user, IDocumentSession session, IMessageBus bus)
+    public static async Task<IResult> Cancel(Guid id, ClaimsPrincipal user, IDocumentSession session)
     {
         var hold = await session.Events.FetchLatest<Hold>(id);
         if (hold is null) return Results.NotFound();
@@ -119,7 +116,6 @@ public static class HoldEndpoints
 
         // If the decision hasn't run yet, it will find the hold cancelled and leave it alone.
         session.Events.Append(id, new HoldCancelled(id, DateTimeOffset.UtcNow));
-        foreach (var invalidate in HoldKeys.Changed(hold)) await bus.PublishAsync(invalidate);
         return Results.NoContent();
     }
 
@@ -181,7 +177,6 @@ public static class EvaluateHoldHandler
             messages.Add(ProtocolEvents.IntentDecided(hold.PatronId, hold.Id, IntentOutcome.Accepted));
         }
 
-        messages.AddRange(HoldKeys.Changed(hold));
         return messages;
     }
 }

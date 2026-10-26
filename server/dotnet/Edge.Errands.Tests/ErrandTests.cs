@@ -29,12 +29,23 @@ public class ErrandTests
     }
 
     [Fact]
-    public void an_errand_ends_only_once()
+    public void the_first_outcome_stands()
     {
         var errand = Requested();
         errand.Apply(new ErrandWithdrawn(errand.Id, At));
-        Should.Throw<InvalidOperationException>(() => errand.Apply(new ErrandAccepted(errand.Id, At)));
+        errand.Apply(new ErrandAccepted(errand.Id, At.AddSeconds(1)));
         errand.Outcome.ShouldBe(ErrandOutcome.Withdrawn);
+        errand.EndedAt.ShouldBe(At);
+    }
+
+    [Fact]
+    public void a_later_decline_doesnt_add_a_reason()
+    {
+        var errand = Requested();
+        errand.Apply(new ErrandAccepted(errand.Id, At));
+        errand.Apply(new ErrandDeclined(errand.Id, "Too late.", At));
+        errand.Outcome.ShouldBe(ErrandOutcome.Accepted);
+        errand.Reason.ShouldBeNull();
     }
 
     [Theory]

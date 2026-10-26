@@ -1,3 +1,5 @@
+using Fisher;
+using Microsoft.Extensions.DependencyInjection;
 using Alba;
 using Edge.Errands;
 using ReferenceApi.Holds;
@@ -56,6 +58,23 @@ public class ErrandTests(AppFixture app)
         await _host.DecideErrand(id);
 
         (await HoldsOf(patron)).Length.ShouldBe(1);
+    }
+
+    [Fact] // with no window it's decided at once, so deciding it here too races that
+    public async Task deciding_while_it_is_being_decided_does_not_fail()
+    {
+        var (_, cookie) = await SignedIn();
+        for (var tries = 0; tries < 20; tries++)
+        {
+            var id = Guid.NewGuid();
+            await _host.PutErrand(cookie, id, ErrandsApi.CancelHold(Guid.NewGuid()), 202);
+            // The loser fails on the version, and the retry finds the errand ended.
+            await _host.DecideErrand(id);
+            (await _host.GetErrand(cookie, id)).Outcome.ShouldBe(ErrandOutcome.Declined);
+            // Requested and one outcome: the loser's outcome was never stored.
+            await using var session = _host.Services.GetRequiredService<IDocumentStore>().QuerySession();
+            (await session.Events.FetchStreamAsync(id)).Count.ShouldBe(2);
+        }
     }
 
     [Fact] // rule 2

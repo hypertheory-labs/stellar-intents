@@ -24,15 +24,8 @@ public class CancelHoldTests(AppFixture app)
     {
         var id = Guid.NewGuid();
         await _host.PutErrand(cookie, id, ErrandsApi.CancelHold(holdId), 202);
-        // WHY wait, and not DecideErrand: with no window it's already being decided, and
-        // deciding it here too would race that (one of the two loses on the version).
-        for (var tries = 0; tries < 50; tries++)
-        {
-            var errand = await _host.GetErrand(cookie, id);
-            if (errand.Outcome is not null) return errand;
-            await Task.Delay(50);
-        }
-        throw new TimeoutException("The cancel-hold errand wasn't decided in time.");
+        await _host.DecideErrand(id);
+        return await _host.GetErrand(cookie, id);
     }
 
     [Fact]

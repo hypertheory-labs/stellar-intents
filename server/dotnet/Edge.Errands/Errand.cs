@@ -64,19 +64,20 @@ public class Errand : IRevisioned
 
     public void Apply(ErrandDeclined e)
     {
-        End(ErrandOutcome.Declined, e.DeclinedAt);
-        Reason = e.Reason;
+        if (End(ErrandOutcome.Declined, e.DeclinedAt)) Reason = e.Reason;
     }
 
     public void Apply(ErrandWithdrawn e) => End(ErrandOutcome.Withdrawn, e.WithdrawnAt);
 
-    // WHY it throws: the handlers only append an outcome to a pending errand, and they
-    // fetch it for writing, so a second outcome means one of them is wrong. Better to fail
-    // the transaction than to let an outcome change.
-    private void End(ErrandOutcome outcome, DateTimeOffset at)
+    // WHY the first outcome stands, and a second is ignored rather than thrown: what stops
+    // a second outcome being stored is the stream's version (the handlers fetch for
+    // writing). But Fisher applies inline projections before it checks the version, so a
+    // throw here would beat that check and fail the race as a crash, not a retry.
+    private bool End(ErrandOutcome outcome, DateTimeOffset at)
     {
-        if (!Pending) throw new InvalidOperationException($"Errand {Id} already ended ({Outcome}); it can't end again as {outcome}.");
+        if (!Pending) return false;
         Outcome = outcome;
         EndedAt = at;
+        return true;
     }
 }

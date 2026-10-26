@@ -1,5 +1,8 @@
 using Fisher;
+using JasperFx;
 using Wolverine;
+using Wolverine.ErrorHandling;
+using Wolverine.Runtime.Handlers;
 
 namespace Edge.Errands;
 
@@ -58,6 +61,11 @@ public static class RequestErrandHandler
 
 public static class DecideErrandHandler
 {
+    // WHY: a withdraw, or a second delivery, can commit between this handler's read and its
+    // save. The save then fails on the version, and the retry finds the errand ended.
+    // Declared here so the library doesn't depend on the app's error policies.
+    public static void Configure(HandlerChain chain) => chain.OnException<ConcurrencyException>().RetryTimes(3);
+
     public static async Task<OutgoingMessages> Handle(
         DecideErrand command, IDocumentSession session, ErrandRegistry registry, CancellationToken cancellation)
     {
@@ -89,6 +97,9 @@ public static class DecideErrandHandler
 
 public static class WithdrawErrandHandler
 {
+    // WHY: the same race from the other side; the retry finds it decided, and answers 409.
+    public static void Configure(HandlerChain chain) => chain.OnException<ConcurrencyException>().RetryTimes(3);
+
     public static async Task<Withdrawal> Handle(WithdrawErrand command, IDocumentSession session, IMessageContext bus)
     {
         var stream = await session.Events.FetchForWriting<Errand>(command.Id);

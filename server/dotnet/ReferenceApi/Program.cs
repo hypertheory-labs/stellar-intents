@@ -44,7 +44,7 @@ builder.Services.AddWolverineHttp();
 // how long a patron can take it back for free before it's decided (the same for placing and swapping).
 var holdWindow = TimeSpan.FromSeconds(builder.Configuration.GetValue("Errands:Holds:WithdrawWindowSeconds", 3));
 builder.Services.AddErrands(errands => errands
-    .Add<PlaceHold, PlaceHoldDecider>("place-hold", window: holdWindow)
+    .Add<PlaceHold, PlaceHoldDecider>("place-hold", window: holdWindow, offers: ["swap-hold"])
     .Add<CancelHold, CancelHoldDecider>("cancel-hold")
     .Add<SwapHold, SwapHoldDecider>("swap-hold", window: holdWindow));
 

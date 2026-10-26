@@ -21,9 +21,13 @@ public class PlaceHoldDecider : IDecide<PlaceHold>
     {
         var placed = await session.Query<Hold>()
             .Where(h => h.PatronId == errand.Requester && h.Status == HoldStatus.Placed)
-            .CountAsync(cancellation);
-        if (placed >= HoldLimit)
-            return Decision.Decline($"You already have {HoldLimit} holds, the limit.");
+            .OrderBy(h => h.PlacedAt)
+            .ToListAsync(cancellation);
+        // Less than they asked for, so it's a decline, with what they can choose instead:
+        // give up one of their holds for this one (unsettled/errands.md, rule 2).
+        if (placed.Count >= HoldLimit)
+            return Decision.Decline($"You already have {HoldLimit} holds, the limit.",
+                offers: placed.Select(h => new SwapHold(h.Id, ask.TitleId, ask.BranchCode)));
 
         // The hold's id is its own; the errand that placed it has another, so it says what it made.
         var holdId = Guid.CreateVersion7();

@@ -55,6 +55,10 @@ public class EventStreamTests(AppFixture app)
         decided.GetProperty("intentId").GetGuid().ShouldBe(fourth);
         decided.GetProperty("outcome").GetString().ShouldBe("declined");
         decided.GetProperty("detail").GetString().ShouldBe("You already have 3 holds, the limit.");
+        // the same offers GET /errands/{id} has: one id, a swap for each hold
+        var offers = decided.GetProperty("offers");
+        offers.GetArrayLength().ShouldBe(1);
+        offers[0].GetProperty("choose").GetArrayLength().ShouldBe(3);
     }
 
     [Fact] // stream rules: fan out per connection

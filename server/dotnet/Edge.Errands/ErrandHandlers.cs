@@ -15,12 +15,15 @@ namespace Edge.Errands;
 /// messages and HTTP, never by importing each other (README, "Rules this repo keeps").
 /// The library knows *when* to tell; the app knows *how*.
 /// </remarks>
-public record ErrandEnded(Guid ErrandId, string Type, string Requester, ErrandOutcome Outcome, string? Reason, Guid? Made = null);
+public record ErrandEnded(
+    Guid ErrandId, string Type, string Requester, ErrandOutcome Outcome, string? Reason, Guid? Made = null,
+    ErrandOffers? Offers = null);
 
 // Public only so Wolverine finds the handlers; the endpoints are the way in.
 public record RequestErrand(Guid Id, string Type, string Requester, string Ask);
-public enum Requested { Created, Repeated, Conflict }
-public record RequestReply(Requested Result, Errand Errand);
+public enum Requested { Created, Repeated, Conflict, AlreadyChosen, NotOffered, NotYours }
+/// <param name="Errand">Null when nothing was created or found (NotOffered, NotYours).</param>
+public record RequestReply(Requested Result, Errand? Errand);
 
 public record WithdrawErrand(Guid Id, string Requester);
 public enum Withdrawal { Withdrawn, AlreadyWithdrawn, AlreadyDecided, NotFound, NotYours }
@@ -38,17 +41,26 @@ public static class RequestErrandHandler
         RequestErrand command, IDocumentSession session, IMessageContext bus, ErrandRegistry registry)
     {
         var existing = await session.Events.FetchLatest<Errand>(command.Id);
+        // Offered: this id was given out by a decline, for one of its asks.
+        var offer = await session.LoadAsync<ErrandOffer>(command.Id);
         if (existing is not null)
         {
             var same = existing.Type == command.Type
                        && existing.Requester == command.Requester
                        && existing.Ask == command.Ask;
-            return new RequestReply(same ? Requested.Repeated : Requested.Conflict, existing);
+            if (same) return new RequestReply(Requested.Repeated, existing);
+            return new RequestReply(offer is null ? Requested.Conflict : Requested.AlreadyChosen, existing);
+        }
+        if (offer is not null)
+        {
+            if (offer.Requester != command.Requester) return new RequestReply(Requested.NotYours, null);
+            if (!offer.Choose.Contains(ErrandRegistry.WithType(command.Type, command.Ask)))
+                return new RequestReply(Requested.NotOffered, null);
         }
 
         var now = DateTimeOffset.UtcNow;
         var requested = new ErrandRequested(command.Id, command.Type, command.Requester, command.Ask,
-            now, now + registry.Get(command.Type).Window);
+            now, now + registry.Get(command.Type).Window, offer?.From);
         session.Events.StartStream<Errand>(command.Id, requested);
         await bus.ScheduleAsync(new DecideErrand(command.Id), requested.DecideAt);
         await session.SaveChangesAsync();
@@ -81,9 +93,7 @@ public static class DecideErrandHandler
         var now = DateTimeOffset.UtcNow;
         var (ended, happened) = decision switch
         {
-            Decision.Declined d => (
-                new ErrandEnded(errand.Id, errand.Type, errand.Requester, ErrandOutcome.Declined, d.Reason),
-                (object)new ErrandDeclined(errand.Id, d.Reason, now)),
+            Decision.Declined d => Declined(d),
             Decision.Accepted a => (
                 new ErrandEnded(errand.Id, errand.Type, errand.Requester, ErrandOutcome.Accepted, null, a.Made),
                 new ErrandAccepted(errand.Id, now, a.Made)),
@@ -95,6 +105,22 @@ public static class DecideErrandHandler
         // Cascading: sent only after the save above committed.
         messages.Add(ended);
         return messages;
+
+        (ErrandEnded, object) Declined(Decision.Declined d)
+        {
+            // One id for all of them: taking one spends it (unsettled/errands.md, rule 4).
+            var offers = d.Offers.Count == 0
+                ? null
+                : new ErrandOffers(Guid.CreateVersion7(), registry.Offered(errand.Type, d.Offers));
+            if (offers is not null)
+                session.Store(new ErrandOffer
+                {
+                    Id = offers.Id, From = errand.Id, Requester = errand.Requester, Choose = [.. offers.Choose],
+                });
+            return (
+                new ErrandEnded(errand.Id, errand.Type, errand.Requester, ErrandOutcome.Declined, d.Reason, Offers: offers),
+                new ErrandDeclined(errand.Id, d.Reason, now, offers));
+        }
     }
 }
 

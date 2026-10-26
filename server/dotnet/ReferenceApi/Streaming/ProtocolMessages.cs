@@ -1,3 +1,4 @@
+using Edge.Errands;
 using Edge.Sse;
 
 namespace ReferenceApi.Streaming;
@@ -33,7 +34,9 @@ public static class ProtocolEvents
     /// <param name="outcome">Final: an outcome never changes.</param>
     /// <param name="detail">Shown to the user, so written for a person (same rules as a problem's detail).</param>
     /// <param name="made">Accepted, and it made something with its own id: memory will contain it.</param>
-    public static ServerSentEvent IntentDecided(string patronId, Guid intentId, IntentOutcome outcome, string? detail = null, Guid? made = null) =>
+    public static ServerSentEvent IntentDecided(
+        string patronId, Guid intentId, IntentOutcome outcome, string? detail = null, Guid? made = null,
+        IReadOnlyList<OfferView>? offers = null) =>
         new(PatronGroup(patronId), "intent-decided", new
         {
             intentId,
@@ -45,6 +48,7 @@ public static class ProtocolEvents
             },
             detail,
             made,
+            offers = offers ?? [],
         });
 
     /// <summary>Reads under these keys changed.</summary>

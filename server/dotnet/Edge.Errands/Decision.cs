@@ -21,7 +21,14 @@ public abstract record Decision
     public static Decision Accept(Guid made) => new Accepted(made);
 
     /// <param name="reason">Shown to the person, so written for one.</param>
-    public static Decision Decline(string reason) => new Declined(reason);
+    public static Decision Decline(string reason) => new Declined(reason, []);
+
+    /// <param name="reason">Shown to the person, so written for one.</param>
+    /// <param name="offers">
+    /// What they can choose instead: asks of errand types this one was registered to offer
+    /// (closed: offering anything else throws). They can take one of them, not several.
+    /// </param>
+    public static Decision Decline(string reason, IEnumerable<object> offers) => new Declined(reason, [.. offers]);
 
     public sealed record Accepted(Guid? Made) : Decision;
 
@@ -29,13 +36,17 @@ public abstract record Decision
     {
         // WHY it throws: a decline nobody can explain is a bug, and the person would be
         // left with "no" and nothing to do about it.
-        public Declined(string reason)
+        public Declined(string reason, IReadOnlyList<object> offers)
         {
             if (string.IsNullOrWhiteSpace(reason))
                 throw new ArgumentException("A decline needs a reason the person can read.", nameof(reason));
             Reason = reason;
+            Offers = offers;
         }
 
         public string Reason { get; }
+
+        /// <summary>Asks the person can choose one of instead. Often none.</summary>
+        public IReadOnlyList<object> Offers { get; }
     }
 }

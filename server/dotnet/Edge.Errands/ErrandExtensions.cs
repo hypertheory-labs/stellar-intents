@@ -13,19 +13,40 @@ namespace Edge.Errands;
 /// <param name="Outcome">Null while it's pending.</param>
 /// <param name="WithdrawableUntil">Until then, DELETE takes it back for free.</param>
 /// <param name="Made">What accepting it made: memory will contain this id.</param>
+/// <param name="Offers">What a decline offered instead. Empty unless it did.</param>
+/// <param name="OfferedBy">The declined errand whose offer this was, if it was one.</param>
 public record ErrandView(
     Guid Id,
     string Type,
     JsonElement Ask,
     ErrandOutcome? Outcome,
     string? Reason,
+    IReadOnlyList<OfferView> Offers,
     Guid? Made,
+    Guid? OfferedBy,
     DateTimeOffset RequestedAt,
     DateTimeOffset WithdrawableUntil,
     DateTimeOffset? EndedAt)
 {
     internal static ErrandView Of(Errand e) => new(e.Id, e.Type, JsonDocument.Parse(e.Ask).RootElement,
-        e.Outcome, e.Reason, e.Made, e.RequestedAt, e.WithdrawableUntil, e.EndedAt);
+        e.Outcome, e.Reason, OfferView.ListOf(e.Offers), e.Made, e.OfferedBy, e.RequestedAt, e.WithdrawableUntil, e.EndedAt);
+}
+
+/// <summary>
+/// Offers as the person sees them: PUT /errands/{Id} with any one of <paramref name="Choose"/>,
+/// as it is, takes it. Only one can be taken.
+/// </summary>
+/// <remarks>
+/// WHY a list, when a decline makes one group today: a decline may one day offer choices
+/// that don't exclude each other (one per missing item, say), each with its own id. The
+/// list lets that arrive without changing the wire.
+/// </remarks>
+public record OfferView(Guid Id, IReadOnlyList<JsonElement> Choose)
+{
+    /// <summary>The wire's list for a decline's offers: empty, or one.</summary>
+    public static IReadOnlyList<OfferView> ListOf(ErrandOffers? offers) => offers is null
+        ? []
+        : [new OfferView(offers.Id, [.. offers.Choose.Select(c => JsonDocument.Parse(c).RootElement)])];
 }
 
 public static class ErrandExtensions
@@ -35,6 +56,7 @@ public static class ErrandExtensions
     {
         var options = new ErrandOptions();
         configure(options);
+        options.Validate();
         services.AddSingleton(options);
         services.AddSingleton<ErrandRegistry>();
         foreach (var type in options.Types.Values) services.AddScoped(type.DeciderType);
@@ -84,16 +106,22 @@ public static class ErrandExtensions
             catch (JsonException) { return BadRequest($"That isn't a \"{type.Name}\" errand."); }
 
             var reply = await bus.InvokeAsync<RequestReply>(new RequestErrand(id, type.Name, requester, ask));
-            var view = ErrandView.Of(reply.Errand);
-            context.Response.Headers.ETag = $"\"{reply.Errand.Version}\"";
             return reply.Result switch
             {
-                Requested.Conflict => Results.Problem(
-                    detail: "A different errand already exists with this id.",
-                    statusCode: StatusCodes.Status409Conflict),
-                _ when reply.Errand.Pending => Results.Accepted($"{prefix}/{id}", view),
-                _ => Results.Ok(view),
+                Requested.Conflict => Conflict("A different errand already exists with this id."),
+                Requested.AlreadyChosen => Conflict("One of these offers was already chosen."),
+                Requested.NotOffered => Conflict("That isn't one of the offers made with this id."),
+                Requested.NotYours => Results.Problem(
+                    detail: "These offers were made to someone else.", statusCode: StatusCodes.Status403Forbidden),
+                _ => Answer(reply.Errand!),
             };
+
+            IResult Answer(Errand errand)
+            {
+                context.Response.Headers.ETag = $"\"{errand.Version}\"";
+                var view = ErrandView.Of(errand);
+                return errand.Pending ? Results.Accepted($"{prefix}/{id}", view) : Results.Ok(view);
+            }
         });
 
         group.MapGet("/{id:guid}", async (Guid id, HttpContext context, IQuerySession session) =>
@@ -123,6 +151,9 @@ public static class ErrandExtensions
 
         return group;
     }
+
+    private static IResult Conflict(string detail) =>
+        Results.Problem(detail: detail, statusCode: StatusCodes.Status409Conflict);
 
     private static IResult BadRequest(string detail) =>
         Results.Problem(detail: detail, statusCode: StatusCodes.Status400BadRequest);

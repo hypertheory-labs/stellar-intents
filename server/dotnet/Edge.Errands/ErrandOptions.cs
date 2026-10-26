@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Fisher;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -26,13 +27,26 @@ public sealed class ErrandOptions
     /// How long the decision waits, so the person can take it back for free. Zero decides
     /// as soon as it can.
     /// </param>
-    public ErrandOptions Add<TAsk, TDecider>(string type, TimeSpan? window = null)
+    /// <param name="offers">
+    /// The errand types a decline may offer instead (closed: nothing else is offered).
+    /// </param>
+    public ErrandOptions Add<TAsk, TDecider>(string type, TimeSpan? window = null, IEnumerable<string>? offers = null)
         where TDecider : class, IDecide<TAsk>
     {
         Types[type] = new ErrandType(type, typeof(TAsk), typeof(TDecider), window ?? TimeSpan.Zero,
+            (offers ?? []).ToHashSet(),
             (decider, ask, errand, session, cancellation) =>
                 ((IDecide<TAsk>)decider).Decide((TAsk)ask, errand, session, cancellation));
         return this;
+    }
+
+    // WHY at startup: an offer naming an errand nobody registered would only fail when
+    // someone was declined, which is the worst moment to find out.
+    internal void Validate()
+    {
+        foreach (var type in Types.Values)
+        foreach (var offered in type.Offers.Where(o => !Types.ContainsKey(o)))
+            throw new InvalidOperationException($"\"{type.Name}\" offers \"{offered}\", which isn't a registered errand.");
     }
 }
 
@@ -41,6 +55,7 @@ internal sealed record ErrandType(
     Type AskType,
     Type DeciderType,
     TimeSpan Window,
+    IReadOnlySet<string> Offers,
     Func<object, object, Errand, IDocumentSession, CancellationToken, Task<Decision>> Decide);
 
 /// <summary>Looks up registered errand types, and reads and writes their asks.</summary>
@@ -58,6 +73,27 @@ public sealed class ErrandRegistry(ErrandOptions options, IServiceProvider servi
     {
         var ask = body.Deserialize(type.AskType, Json) ?? throw new JsonException("The body is empty.");
         return JsonSerializer.Serialize(ask, type.AskType, Json);
+    }
+
+    /// <summary>An ask as the person sends it: its JSON, with "type" first.</summary>
+    internal static string WithType(string type, string ask)
+    {
+        var sent = new JsonObject { ["type"] = type };
+        foreach (var (name, value) in JsonNode.Parse(ask)!.AsObject()) sent[name] = value?.DeepClone();
+        return sent.ToJsonString(Json);
+    }
+
+    /// <summary>A decline's offers, as the person will send one back. Throws if <paramref name="from"/> may not offer one.</summary>
+    internal IReadOnlyList<string> Offered(string from, IReadOnlyList<object> offers)
+    {
+        var allowed = Get(from).Offers;
+        return [.. offers.Select(offer =>
+        {
+            var type = options.Types.Values.FirstOrDefault(t => t.AskType == offer.GetType() && allowed.Contains(t.Name))
+                ?? throw new InvalidOperationException(
+                    $"\"{from}\" offered a {offer.GetType().Name}, which isn't one of the errands it was registered to offer.");
+            return WithType(type.Name, JsonSerializer.Serialize(offer, type.AskType, Json));
+        })];
     }
 
     internal async Task<Decision> Decide(Errand errand, IDocumentSession session, CancellationToken cancellation)

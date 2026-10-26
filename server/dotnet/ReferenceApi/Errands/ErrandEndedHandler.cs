@@ -18,5 +18,5 @@ public static class ErrandEndedHandler
             ErrandOutcome.Accepted => IntentOutcome.Accepted,
             ErrandOutcome.Declined => IntentOutcome.Declined,
             _ => IntentOutcome.Withdrawn,
-        }, ended.Reason, ended.Made);
+        }, ended.Reason, ended.Made, OfferView.ListOf(ended.Offers));
 }

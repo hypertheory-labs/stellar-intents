@@ -7,10 +7,11 @@ does; this folder says what we've wondered.
 Each thing here should earn its way into `docs/` (by being built) or be deleted. Git
 history keeps what's deleted.
 
-| File                                           | What                                                                                            |
-| ---------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| [protocol-proposed.md](protocol-proposed.md)   | The protocol's unbuilt parts: more remedies, receipts per phase, more durability.               |
-| [specifying-intents.md](specifying-intents.md) | IRMTO, a way to write an intent down. Tried twice, below.                                       |
-| [holds-in-irmto.md](holds-in-irmto.md)         | The reference's two intents in IRMTO. It found a real bug (a cancel overtaking a hold).         |
-| [quotes.md](quotes.md)                         | Quote → bind, a second domain, specified before building, with predictions.                     |
-| [backplane.md](backplane.md)                   | Edge.Sse across more than one instance: why it should be easy, the one rule, Postgres `NOTIFY`. |
+| File                                           | What                                                                                                |
+| ---------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| [protocol-proposed.md](protocol-proposed.md)   | The protocol's unbuilt parts: more remedies, receipts per phase, more durability.                   |
+| [specifying-intents.md](specifying-intents.md) | IRMTO, a way to write an intent down. Tried twice, below.                                           |
+| [holds-in-irmto.md](holds-in-irmto.md)         | The reference's two intents in IRMTO. It found a real bug (a cancel overtaking a hold).             |
+| [quotes.md](quotes.md)                         | Quote → bind, a second domain, specified before building, with predictions.                         |
+| [backplane.md](backplane.md)                   | Edge.Sse across more than one instance: why it should be easy, the one rule, Postgres `NOTIFY`.     |
+| [edge-weight.md](edge-weight.md)               | One errand (place a hold, over the limit, offer a swap) written as a counter Edge and a clerk Edge. |

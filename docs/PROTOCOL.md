@@ -1,6 +1,6 @@
 # Intent wire protocol
 
-**Draft 0.3, 2026-10-24.** How a browser and an API agree about who's asking, about
+**Draft 0.4, 2026-10-26.** How a browser and an API agree about who's asking, about
 commands the user asked for, and about reads that have gone stale. Framework-neutral:
 this page is the contract; the Angular `outbox` library and the Wolverine/Fisher backend
 in this repo are one implementation of each side.
@@ -27,6 +27,7 @@ Ideas that aren't built live in [`unsettled/`](../unsettled), until they are or 
 | **Apology**      | What the client tells the person when a guess didn't hold, or might not have. Written in advance, per intent type.      |
 | **Remedy**       | What the person can do about an apology: `try-again`, `wait`, `no`, `sign-in`. See [Remedies](#remedies).            |
 | **Read key**     | The path (and query) of a GET, relative to the API root, e.g. `/holds?patronId=p1`. Identifies a cached read.          |
+| **Errand**       | An intent addressed to `/errands` rather than to the resource it changes: what the server takes on for the person, knowing the answer may be no. See [§5](#5-errands). |
 
 ---
 
@@ -311,6 +312,107 @@ Plain `GET`s. The protocol adds only:
 
 ---
 
+## 5. Errands
+
+The same intent, addressed differently: to `/errands/{id}`, not to the resource it
+changes. The reference server does this for placing a hold, **beside** §1's
+`PUT /holds/{id}`. The Angular client doesn't use it yet. §0–3 apply unchanged (the
+session, `Idempotency-Key`, problem details, the stream); this section says only what's
+different.
+
+```mermaid
+sequenceDiagram
+    participant B as Browser
+    participant E as Server
+    B->>E: PUT /errands/{id} {"type":"place-hold",…}
+    E-->>B: 202, Location: /errands/{id}, withdrawableUntil
+    alt before withdrawableUntil
+        B->>E: DELETE /errands/{id}
+        E-->>B: 204
+        E-->>B: intent-decided: withdrawn (stream)
+    else the window closes
+        Note over E: decided: accepted, or declined with a reason
+        E-->>B: intent-decided (stream)
+    end
+```
+
+### Asking
+
+```http
+PUT /errands/0b6e0c3e-6a5c-4c4e-9f6e-2f0d8f1c7a11 HTTP/1.1
+Idempotency-Key: 0b6e0c3e-6a5c-4c4e-9f6e-2f0d8f1c7a11
+Content-Type: application/json
+
+{ "type": "place-hold", "titleId": 42, "branchCode": "MAIN" }
+```
+
+- **`type` says which errand.** The server has a closed list. A body without a `type`,
+  with a type not on the list, or that can't be read as that type, is a `400`.
+- **The answer is §1's**: `202` with `Location: /errands/{id}` while pending, `200` on a
+  repeat once decided, `409` for the same id with a different body. The body is compared
+  as the errand type reads it, so key order and whitespace don't make a conflict.
+- **The decision is never in the `PUT`'s answer.** It's made when the errand's withdraw
+  window closes (the reference: 3 seconds for a hold), and arrives on the stream or
+  through a status check.
+
+### Status checks
+
+`GET /errands/{id}` answers `200` with an `ETag`:
+
+```json
+{
+  "id": "0b6e0c3e-…",
+  "type": "place-hold",
+  "ask": { "titleId": 42, "branchCode": "MAIN" },
+  "outcome": null,
+  "reason": null,
+  "requestedAt": "2026-10-26T14:02:11Z",
+  "withdrawableUntil": "2026-10-26T14:02:14Z",
+  "endedAt": null
+}
+```
+
+- **`outcome` is the outcome**: `null` while pending, then `accepted`, `declined`, or
+  `withdrawn`. Unlike §2, a client needs no per-type mapping to read it.
+- **`reason`** comes with `declined`, and is written for the person, under the same rules
+  as a problem's `detail`.
+- **`withdrawableUntil`** is when the decision will be made. Until then, withdrawing is
+  free, and a receipt can say so ("you can take it back until 14:02").
+- `404` while it isn't recorded, as in §2. `403` when it's someone else's errand: a
+  `404` would say there's no such errand, which isn't true.
+
+### Withdrawing
+
+`DELETE /errands/{id}` takes an errand back before it's decided.
+
+| Status | Means                                                                                |
+| ------ | ------------------------------------------------------------------------------------ |
+| `204`  | Withdrawn, now or already. Its outcome is `withdrawn`, and the stream says so.       |
+| `409`  | Already decided. Nothing changed. Changing it now is a new errand (a cancel, say).   |
+| `404`  | Not recorded.                                                                        |
+| `403`  | Someone else's.                                                                      |
+
+This is the [lifecycle's](#intent-lifecycle) withdraw, made a request on the errand
+itself instead of a second intent racing the first. **Withdrawing isn't cancelling.**
+Taking a placed hold away is a new errand moving forward, which can be declined; it
+isn't built as an errand yet.
+
+### Outcomes on the stream
+
+When an errand ends, the stream sends §3's `intent-decided`, with the errand's id as
+`intentId` and its `reason` as `detail`. A withdrawal is sent too.
+
+### Not yet
+
+- **No `invalidate` for errands.** An accepted hold doesn't make anyone's reads stale, so
+  the reference breaks [The server](#the-server)'s sixth rule here. The code is wrong,
+  not the rule.
+- **An errand's id isn't the id of what it makes.** The hold gets its own id, so §1's
+  exact check ("memory contains an item with that id") doesn't work, and a client has no
+  way yet to know when to retire an accepted errand's candidate.
+
+---
+
 ## The client
 
 What a conforming client has, in any framework. Names are suggestions.
@@ -458,6 +560,16 @@ implementation can be checked without reading the reference code.
 20. Pat has a stored intent; Pat signs out and Sam signs in on the same browser →
     nothing is sent or checked for Pat's intent.
 
+**Errands** *(server)*
+
+21. `PUT /errands/{id}` with a known type → `202`, `Location: /errands/{id}`; a status
+    check says `outcome: null` and a `withdrawableUntil`.
+22. A body without a `type`, or with a type the server doesn't run → `400`.
+23. `DELETE` before the decision → `204`, the outcome is `withdrawn`, and what was asked
+    never happens. Again → `204`.
+24. `DELETE` after the decision → `409`, and the outcome doesn't change.
+25. Someone else's errand → `403` for a `GET` and a `DELETE`.
+
 ---
 
 ## Not in this protocol (yet)
@@ -482,4 +594,6 @@ implementation can be checked without reading the reference code.
   `HoldEndpoints.cs` (§1, §2) and `HoldKeys.cs` (which reads a change makes stale); the
   stream itself, which knows nothing about holds, is in [`Streaming/`](../server/dotnet/ReferenceApi/Streaming)
   (§3), and identity in [`Session/`](../server/dotnet/ReferenceApi/Session) (§0).
+  Errands (§5) are in [`Edge.Errands`](../server/dotnet/Edge.Errands), which knows
+  nothing about holds; the hold's rules for them are `Holds/PlaceHoldDecider.cs`.
   Conformance tests: [`ReferenceApi.Tests`](../server/dotnet/ReferenceApi.Tests).

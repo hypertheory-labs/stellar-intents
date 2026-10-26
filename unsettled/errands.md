@@ -58,12 +58,13 @@ Each rule held in all three domains. The links point to where it was tested hard
 - The channels, and what the messages and apologies say.
 - Which projections each errand changes, and the map from projections to read keys.
 
-## On the wire (proposed, not in PROTOCOL)
+## On the wire
 
 Errands as resources of their own: `PUT /errands/{id}` with a typed body per errand type
 (a discriminator, closed: an unknown type is a 400), `GET /errands/{id}` for its status,
-`DELETE /errands/{id}` to withdraw, `GET /errands` for the person's history. Reads stay
-resource-oriented. Evidence so far: it separates withdrawing from cancelling, and it makes
+`DELETE /errands/{id}` to withdraw. **Those three are built**, and are
+[PROTOCOL §5](../docs/PROTOCOL.md#5-errands). Still proposed: `GET /errands` for the
+person's history. Reads stay resource-oriented. Evidence so far: it separates withdrawing from cancelling, and it makes
 `supersedes` unnecessary ([binding a revised quote](errands-insurance.md#bind-a-quote)).
 It changes PROTOCOL §1, which today prefers `PUT` to the resource's own URL.
 

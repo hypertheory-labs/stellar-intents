@@ -402,11 +402,12 @@ isn't built as an errand yet.
 When an errand ends, the stream sends §3's `intent-decided`, with the errand's id as
 `intentId` and its `reason` as `detail`. A withdrawal is sent too.
 
+What an accepted errand changed is announced with `invalidate`, like any other write
+(the reference sends it for whatever documents a commit wrote, whoever wrote them).
+A declined or withdrawn errand changed nothing, so it makes nothing stale.
+
 ### Not yet
 
-- **No `invalidate` for errands.** An accepted hold doesn't make anyone's reads stale, so
-  the reference breaks [The server](#the-server)'s sixth rule here. The code is wrong,
-  not the rule.
 - **An errand's id isn't the id of what it makes.** The hold gets its own id, so §1's
   exact check ("memory contains an item with that id") doesn't work, and a client has no
   way yet to know when to retire an accepted errand's candidate.

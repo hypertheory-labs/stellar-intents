@@ -58,6 +58,11 @@ builder.Services.ConfigureHttpJsonOptions(json =>
 builder.Services.AddServerSentEvents(options =>
     options.Heartbeat = TimeSpan.FromSeconds(builder.Configuration.GetValue("Events:HeartbeatSeconds", 20)));
 
+// Which reads go stale when a document is written, from whatever code wrote it (Streaming/Invalidations.cs)
+builder.Services.AddSingleton(services => new Invalidations(services.GetRequiredService<SseHub>())
+    .When<Hold>(HoldKeys.Changed));
+builder.Services.ConfigureFisher((services, store) => store.Listeners.Add(services.GetRequiredService<Invalidations>()));
+
 // The API's documentation: /openapi/v1.json
 builder.Services.AddOpenApi(options => options.AddDocumentTransformer((document, _, _) =>
 {

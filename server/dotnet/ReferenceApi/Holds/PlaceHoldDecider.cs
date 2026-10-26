@@ -10,9 +10,8 @@ namespace ReferenceApi.Holds;
 /// status, until the errand path replaces it. Then Requested and Rejected leave the hold,
 /// because they're the errand's (unsettled/edge-weight.md).
 ///
-/// FOR REAL: no invalidations yet. The patron's list and the title's wait list change
-/// when this accepts, and nothing says so. That waits for the commit listener
-/// (unsettled/errands.md, rule 11), rather than writing keys here.
+/// WHY no invalidations here: writing the hold is enough. Streaming/Invalidations.cs
+/// hears the commit and sends the hold's keys.
 /// </remarks>
 public class PlaceHoldDecider : IDecide<PlaceHold>
 {

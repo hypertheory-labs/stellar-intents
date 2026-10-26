@@ -221,12 +221,19 @@ export const OutboxStore = signalStore(
         .subscribe({
           next: (response: HttpResponse<unknown>) => {
             clearTimeout(timer);
-            moveTo(
-              intent.id,
-              response.status === 202
-                ? { status: 'received', receivedAt: Date.now() }
-                : { status: 'decided', decidedAt: Date.now(), outcome: 'accepted' },
-            );
+            if (response.status === 202) {
+              moveTo(intent.id, { status: 'received', receivedAt: Date.now() });
+              return;
+            }
+            // Decided, but not necessarily accepted: a repeat of a declined errand is a 200
+            // too. The body says how it ended, read the way a status check reads it
+            // (PROTOCOL §1). No body, or no way to read one: it's done, and good.
+            const outcome =
+              type.status && response.body != null
+                ? type.status.outcome(response.body, intent)
+                : ({ outcome: 'accepted' } as const);
+            if (outcome) settle(intent.id, outcome);
+            else moveTo(intent.id, { status: 'received', receivedAt: Date.now() });
           },
           error: (error: HttpErrorResponse) => {
             clearTimeout(timer);

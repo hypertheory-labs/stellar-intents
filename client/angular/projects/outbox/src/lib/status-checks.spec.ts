@@ -95,6 +95,28 @@ describe('status checks (PROTOCOL §2)', () => {
     expect(statusOf(ctx.store, intent.id)).toBe('received');
   });
 
+  // PROTOCOL §1: a repeat after the decision is a 200, whatever the decision was
+  it('a 200 is read like a status check: a repeat of a declined one is declined', () => {
+    const ctx = setup();
+    const intent = ctx.store.enqueue(placeHold, { title: 'Dune' });
+    ctx.http
+      .expectOne(`/holds/${intent.id}`)
+      .flush({ id: intent.id, status: 'rejected', reason: 'You already have 3 holds.' });
+
+    expect(statusOf(ctx.store, intent.id)).toBe('declined');
+    expect(ctx.store.apologies()[0].message).toContain('You already have 3 holds.');
+  });
+
+  it('a 200 whose body is still pending is received, not done', () => {
+    const ctx = setup();
+    const intent = ctx.store.enqueue(placeHold, { title: 'Dune' });
+    ctx.http
+      .expectOne(`/holds/${intent.id}`)
+      .flush({ id: intent.id, status: 'requested', reason: null });
+
+    expect(statusOf(ctx.store, intent.id)).toBe('received');
+  });
+
   it('a 404 is "not recorded yet", not an outcome', () => {
     const ctx = setup();
     const intent = received(ctx);

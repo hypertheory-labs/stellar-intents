@@ -1,5 +1,11 @@
 # The reference domain's intents, specified
 
+**Since then:** both intents are errands now, and `PUT`/`DELETE /holds` are gone. The bug
+it found (a cancel overtaking a placement) can't happen: withdrawing is
+`DELETE /errands/{id}`, and cancelling is a separate errand. The cancel's intent id is
+recorded now (it's an errand). Still open from this list: the unchecked bases, the
+offer, and a dead-lettered decision nobody hears about.
+
 **2026-10-23.** The two intents the reference already has, written in the
 [IRMTO form](specifying-intents.md) and then checked against the code. Each line says
 where it lives, or ⚠ when it has nowhere to live. An experiment: does the form find

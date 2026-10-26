@@ -1,5 +1,10 @@
 # A second domain: quote → bind
 
+**Since then:** rewritten as errands in [errands-insurance.md](errands-insurance.md#bind-a-quote),
+which drops `supersedes` (withdraw, then ask again) and reads "accepted on terms" as
+plain accepted (they got what they asked for, or better). Read that first; this is the
+earlier attempt.
+
 **2026-10-24. Spec only; nothing is built.** Holds barely has a basis: who's asking, and
 a count. This domain's intent rests on a price, which can change underneath it
 materially or not. Written in the [IRMTO form](specifying-intents.md) before any code,

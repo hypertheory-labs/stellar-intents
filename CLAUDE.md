@@ -33,6 +33,14 @@ in cold, so every word in its vocabulary must change code or catch a bug, or it 
 - **Errands** live in `server/dotnet/Edge.Errands`: what the Edge takes on for a person.
   `unsettled/errands.md` is the shape it's built toward. Errands are the only way to change
   anything (`PUT /errands/{id}`); resources are only read.
+- **Invalidations come from a Fisher commit listener** (`ReferenceApi/Streaming/Invalidations.cs`),
+  not from handlers: the app maps a document type to read keys once. It sends straight to
+  the hub, after commit but outside Wolverine's outbox, so a crash can lose one (fine: the
+  reconnect's `subscribed` re-checks everything). Outcomes still go through Wolverine, so
+  `invalidate` can reach the browser **before** `intent-decided`.
+- **Fisher applies inline projections before it checks the stream version.** An `Apply`
+  that throws to guard an invariant beats the version check and turns a lost race into a
+  crash. Let the version check hold the rule; handlers retry `ConcurrencyException`.
 
 ## Working here
 

@@ -1,13 +1,15 @@
 # Errands: the shape
 
-**2026-10-26.** Not built. This is what three sample domains, written the same way,
-have in common: [the library](errands-library.md), [insurance](errands-insurance.md), and
-[a shop](errands-shop.md). What's the same in all three is a candidate for a library at
-the Edge. What differs is the app's. Read this first, and the domains for evidence.
+**2026-10-26.** Partly built: rules 1, 2 (without offers), 5, 6 and 11, in
+`server/dotnet/Edge.Errands` and PROTOCOL §1–2. This is what three sample domains,
+written the same way, have in common: [the library](errands-library.md),
+[insurance](errands-insurance.md), and [a shop](errands-shop.md). What's the same in all
+three is a candidate for a library at the Edge. What differs is the app's. Read this
+first, and the domains for evidence.
 
 **An errand** is what the Edge agrees to take on for a person, knowing the answer may be
-no. The person has an intent; the Edge runs the errand. (The word is on trial: it stays
-only if a type ends up named after it.)
+no. The person has an intent; the Edge runs the errand. (The word was on trial: it
+stayed only if a type ended up named after it. One did: `Errand`.)
 
 ## The rules
 
@@ -87,4 +89,5 @@ or **neither** (not yet, or bullshit).
   trip. It holds if the cart warns early and "ship what you have" can be a preference.
 - **Promised messages need a home.** Rules 3 and 9 need a durable way to tell a person
   something that isn't an outcome. Nothing like it exists yet.
-- **The wire change** is evidenced by one domain (insurance) and argued from two.
+- **The wire change** was evidenced by one domain (insurance) and argued from two. It's
+  built now, and `/errands` is the only way to change anything.

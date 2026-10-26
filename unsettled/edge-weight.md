@@ -1,7 +1,12 @@
 # How much the Edge should know: one errand, written twice
 
 **2026-10-26.** Sketches, not code. Every type and method name below is invented for the
-comparison, and none of it compiles. The question is whether the Edge is the **counter**
+comparison, and none of it compiles.
+
+**Since then:** the clerk is built (`server/dotnet/Edge.Errands`, an `IDecide<T>` per
+errand). The hold lost `Requested` and `Rejected`, as Version B said it would. The
+invalidations question was answered by a commit listener that maps documents to read
+keys. Offers and `Swap` aren't built. The question is whether the Edge is the **counter**
 (it checks your session and passes things on) or the **clerk** (it knows what you asked for
 and what it can offer when the answer is no).
 

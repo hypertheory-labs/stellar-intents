@@ -10,10 +10,6 @@ back. Section names refer to the protocol.
   them"), and moving between them was custody changing hands. The idea: a receipt changes
   when custody does, one per phase, its words chosen by the business. (Today a receipt is
   one sentence per intent type, and it isn't true in every state.)
-- **Which intent a cancel overtakes.** Nothing on the wire says. Today a client can only
-  tell when the intent created the thing being cancelled (the same id), and until the
-  server's `withdrawn` arrives, the first intent's guess can come back. `supersedes={id}`
-  on the new request is the candidate (see [quotes.md](quotes.md)).
 - **"Never mind" before it left this browser.** Needs no wire at all. No client offers it.
 - **Stuck:** `received` past the time the server promised (a `202` with `Retry-After`).
 - **Needs a person:** the server can't decide without its own staff (a dead-lettered

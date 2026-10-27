@@ -12,6 +12,7 @@ import { type } from '@ngrx/signals';
 import { eventGroup, injectDispatch } from '@ngrx/signals/events';
 import { invalidationEvents } from './invalidation';
 import { OutboxStore } from './outbox-store';
+import type { OfferGroup } from './types';
 
 /*
   How the outbox hears about outcomes without being asked, and the floor under it.
@@ -149,6 +150,7 @@ function follow({
         outcome: string;
         reason?: string | null;
         made?: string | null;
+        offers?: OfferGroup[];
       }>(event);
       if (!decided) return;
       switch (decided.outcome) {
@@ -163,6 +165,7 @@ function follow({
           return outbox.settle(decided.intentId, {
             outcome: 'declined',
             detail: decided.reason ?? undefined,
+            offers: decided.offers ?? [],
           });
         // Anything else is a newer server than this client: not an outcome we can keep.
       }

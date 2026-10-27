@@ -11,7 +11,6 @@ import {
 import { injectDispatch } from '@ngrx/signals/events';
 import { outboxEvents } from './events';
 import { INTENT_STORAGE } from './intent-storage';
-import { invalidationEvents } from './invalidation';
 import { realIdOf } from './promotion';
 import { AnyIntentType, INTENT_TYPES } from './registry';
 import {
@@ -22,6 +21,7 @@ import {
   IntentState,
   IntentStatus,
   IntentType,
+  OfferGroup,
   Outcome,
   Remedy,
 } from './types';
@@ -44,6 +44,8 @@ export interface ApologyNotice {
   readonly remedy: Remedy;
   readonly message: string;
   readonly actions: readonly ApologyAction[];
+  /** What the server says can be chosen instead (PROTOCOL §1, Offers): take one with `takeOffer`. */
+  readonly offers: readonly OfferGroup[];
 }
 
 /**
@@ -63,7 +65,6 @@ export const OutboxStore = signalStore(
     ),
     _http: inject(HttpClient),
     _dispatch: injectDispatch(outboxEvents),
-    _invalidate: injectDispatch(invalidationEvents),
     _storage: inject(INTENT_STORAGE, { optional: true }),
     /** Whose intents these are, once the session has said (see provideIntentStorage). */
     _owner: { id: undefined as string | undefined },
@@ -94,6 +95,7 @@ export const OutboxStore = signalStore(
               remedy: failure.remedy,
               message: apology.say(intent, failure),
               actions: apology.actions,
+              offers: offersOf(intent.state),
             },
           ];
         }),
@@ -152,6 +154,7 @@ export const OutboxStore = signalStore(
               decidedAt,
               outcome: 'declined',
               failure: { remedy: 'no', detail: outcome.detail },
+              offers: outcome.offers,
             }
           : outcome.outcome === 'accepted'
             ? { status: 'decided', decidedAt, outcome: 'accepted', made: outcome.made }
@@ -234,39 +237,85 @@ export const OutboxStore = signalStore(
         });
     }
 
+    /** A new intent, sent at once (or once it's stored). */
+    function add<TPayload>(
+      type: IntentType<TPayload, unknown>,
+      payload: TPayload,
+      id: string,
+    ): Intent<TPayload> {
+      const registered = store._types.get(type.name);
+      if (registered !== type) {
+        throw new Error(
+          `Intent type '${type.name}' isn't registered (provideIntentTypes in app.config). ` +
+            `An unregistered intent couldn't be resumed or explained later.`,
+        );
+      }
+      const intent: Intent<TPayload> = {
+        id,
+        type: type.name,
+        payload,
+        requestedAt: Date.now(),
+        state: { status: 'requested' },
+        schema: 2,
+      };
+      // the store holds every type's intents; it never reads the payload
+      patchState(store, addEntity(intent as Intent));
+      store._dispatch.intentRequested({ intent });
+      // PROTOCOL (Durability): stored before it's sent, or a tab closed mid-send leaves
+      // nothing to ask about. Without storage, it goes at once.
+      if (store._storage && store._owner.id) {
+        void persist(intent as Intent).then(() =>
+          send(intent as Intent, registered as AnyIntentType),
+        );
+      } else {
+        send(intent as Intent, registered as AnyIntentType);
+      }
+      return intent;
+    }
+
+    function dismissIntent(id: string) {
+      const intent = current(id);
+      if (!intent) return;
+      patchState(store, removeEntity(id));
+      forget(id);
+      store._dispatch.intentDismissed({ intent });
+    }
+
     return {
       /**
        * The moment a draft becomes an intent. Returns the intent, whose id is also
        * the id the real item will have.
        */
       enqueue<TPayload>(type: IntentType<TPayload, unknown>, payload: TPayload): Intent<TPayload> {
-        const registered = store._types.get(type.name);
-        if (registered !== type) {
+        return add(type, payload, crypto.randomUUID());
+      },
+
+      /**
+       * Take one of a declined intent's offers (PROTOCOL §1, Offers): send it exactly as it
+       * came, as an intent of its type, with the offers' id. The declined intent goes: the
+       * person has chosen what to do about it. Taking another from the same offers, here or
+       * in another tab, is the server's 409.
+       */
+      takeOffer<TPayload>(
+        type: IntentType<TPayload, unknown>,
+        from: string,
+        offers: OfferGroup,
+        choice: TPayload,
+      ): Intent<TPayload> {
+        if (!offers.choose.includes(choice)) {
           throw new Error(
-            `Intent type '${type.name}' isn't registered (provideIntentTypes in app.config). ` +
-              `An unregistered intent couldn't be resumed or explained later.`,
+            `That isn't one of the offers in ${offers.id}: send one back as it came.`,
           );
         }
-        const intent: Intent<TPayload> = {
-          id: crypto.randomUUID(),
-          type: type.name,
-          payload,
-          requestedAt: Date.now(),
-          state: { status: 'requested' },
-          schema: 2,
-        };
-        // the store holds every type's intents; it never reads the payload
-        patchState(store, addEntity(intent as Intent));
-        store._dispatch.intentRequested({ intent });
-        // PROTOCOL (Durability): stored before it's sent, or a tab closed mid-send leaves
-        // nothing to ask about. Without storage, it goes at once.
-        if (store._storage && store._owner.id) {
-          void persist(intent as Intent).then(() =>
-            send(intent as Intent, registered as AnyIntentType),
+        if ((choice as { type?: unknown }).type !== type.name) {
+          throw new Error(
+            `That offer is a '${(choice as { type?: unknown }).type}', not a '${type.name}'.`,
           );
-        } else {
-          send(intent as Intent, registered as AnyIntentType);
         }
+        // Already taken on this page: it's the same intent, whichever was chosen.
+        const taken = current(offers.id) as Intent<TPayload> | undefined;
+        const intent = taken ?? add(type, choice, offers.id);
+        dismissIntent(from);
         return intent;
       },
 
@@ -352,16 +401,15 @@ export const OutboxStore = signalStore(
       },
 
       /** The user dismissed the apology. */
-      dismiss(id: string) {
-        const intent = current(id);
-        if (!intent) return;
-        patchState(store, removeEntity(id));
-        forget(id);
-        store._dispatch.intentDismissed({ intent });
-      },
+      dismiss: dismissIntent,
     };
   }),
 );
+
+/** What a decline offered instead, if it was one. */
+function offersOf(state: IntentState): readonly OfferGroup[] {
+  return state.status === 'decided' && state.outcome === 'declined' ? (state.offers ?? []) : [];
+}
 
 /** The failure an apology should speak to, if the state has one. */
 function failureOf(state: IntentState): Failure | undefined {

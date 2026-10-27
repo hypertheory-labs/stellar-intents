@@ -57,6 +57,8 @@ export type IntentState =
       readonly decidedAt: number;
       readonly outcome: 'declined';
       readonly failure: Failure;
+      /** What the server says can be chosen instead (PROTOCOL §1, Offers). */
+      readonly offers?: readonly OfferGroup[];
     }
   /**
    * The person took it back before it was decided (a cancel that got there first). Nothing
@@ -90,6 +92,16 @@ export interface Failure {
   readonly status?: number;
   /** Server-provided detail (e.g. a problem+json `detail`), when there was one. */
   readonly detail?: string;
+}
+
+/**
+ * A decline's offers (PROTOCOL §1, Offers): whole errands the person can choose one of
+ * instead, under one id. The client never builds one: it sends a choice back as it came,
+ * with `takeOffer`.
+ */
+export interface OfferGroup {
+  readonly id: string;
+  readonly choose: readonly unknown[];
 }
 
 // ---------------------------------------------------------------------------
@@ -127,7 +139,11 @@ export interface IntentRequest {
 /** How it ended, as a status check or the server's event stream reports it (PROTOCOL §3). */
 export type Outcome =
   | { readonly outcome: 'accepted'; readonly made?: string }
-  | { readonly outcome: 'declined'; readonly detail?: string }
+  | {
+      readonly outcome: 'declined';
+      readonly detail?: string;
+      readonly offers?: readonly OfferGroup[];
+    }
   | { readonly outcome: 'withdrawn' };
 
 /**

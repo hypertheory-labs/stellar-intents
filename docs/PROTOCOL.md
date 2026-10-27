@@ -463,6 +463,9 @@ What a conforming client has, in any framework. Names are suggestions.
    outcome": `invalidate` can arrive first, and the guess and the real item would both show.
 8. **Storage (optional).** Keeps intents across page loads. See
    [Durability](#durability).
+9. **Offers.** Keeps a decline's offers with its apology, and takes one by sending it
+   unchanged to the offers' id (§1, Offers), as an intent of the offer's type. The
+   declined intent then goes: the person chose what to do about it.
 
 A client **MUST NOT** write candidates into memory (or the read cache). Because it never
 does, it never has to roll anything back.
@@ -606,6 +609,15 @@ implementation can be checked without reading the reference code.
 28. Then `PUT` another of its choices to the same id → `409`, and nothing else happens.
 29. `PUT` something the offer didn't include to its id → `409`, and no errand exists
     there. From another user's session → `403`.
+
+**Offers** *(client)*
+
+30. `intent-decided: declined` with `offers` → the apology carries them; without, it
+    carries none.
+31. Taking one → `PUT /errands/{offers' id}` with `Idempotency-Key: {offers' id}` and the
+    choice as the body, unchanged; the declined intent is gone.
+32. Taking a second one on the same page → nothing more is sent. Something that wasn't in
+    the offers can't be taken.
 
 ---
 

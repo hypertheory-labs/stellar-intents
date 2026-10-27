@@ -148,6 +148,18 @@ describe('the event stream (PROTOCOL §3)', () => {
     expect(ctx.store.apologies()[0].message).toBe('You already have 3 holds, the limit.');
   });
 
+  it('a declined intent keeps its offers, for its apology to show', () => {
+    const ctx = setup();
+    const intent = received(ctx);
+    const offers = [{ id: 'o1', choose: [{ type: 'swap-hold', giveUp: 'h1', titleId: 1010 }] }];
+
+    ctx
+      .latest()
+      .emit('intent-decided', { intentId: intent.id, outcome: 'declined', reason: 'No.', offers });
+
+    expect(ctx.store.apologies()[0].offers).toEqual(offers);
+  });
+
   it('an accepted intent keeps what it made, and its guess takes that id', () => {
     const ctx = setup();
     const intent = received(ctx);

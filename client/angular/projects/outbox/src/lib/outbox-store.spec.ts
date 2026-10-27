@@ -100,6 +100,7 @@ describe('OutboxStore', () => {
         remedy: 'no',
         message: "We couldn't place a hold on Dune.",
         actions: ['retry'],
+        offers: [],
       },
     ]);
   });

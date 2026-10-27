@@ -227,3 +227,138 @@ with a fresh reason.
   that give the receipt an honest deadline; a paused listener as "stuck for everyone";
   sending the client's age instead of a timestamp; `supersedes={id}`; the friction ledger.
   Some of these may come back through errands; if so, they'll come back with a reason.
+
+## `larch` (2026-10-26 to 2026-10-27)
+
+The round: the Edge runs **errands**. How big is one, how do they chain, and what do
+three domains say is general? Three sample domains (library, insurance, a shop) gave
+errands eleven rules (`unsettled/errands.md`). Then the code followed: `Edge.Errands`,
+errands as the one way to change anything, invalidations from the commit, `made`, and
+offers. PROTOCOL went from 0.4 to 0.6.
+
+### Decisions
+
+- **An errand has one final outcome; anything long is a chain of errands** (Jeff,
+  `larch`). It held in all three domains, including an inter-library loan over days. The
+  strain is specific: a promise an accepted errand made ("we'll tell you when it
+  arrives") needs a message that isn't an outcome. Not built.
+- **Withdrawing happens only before a decision; after it, changing things is a new
+  errand that can be declined** (Jeff, `larch`). Cancelling a placed hold is
+  `cancel-hold`, not a `DELETE`. We believed this is what made the cancel-first bug
+  possible: one `DELETE /holds/{id}` did both jobs.
+- **The spec is closed world** (Jeff, `larch`): what isn't listed isn't offered. Built as
+  the closed list of errand types (an unknown type is a `400`) and the closed list of
+  offers per type (checked at startup; offering anything else throws).
+- **Errands are the one way; resources are only read** (Jeff, `larch`, `9dfb09f`,
+  `0cf4c96`). `PUT`/`GET`/`DELETE /errands/{id}`. Jeff: "let's be all Guido and say 'one
+  good way'", and "`/errands` or nothing". He sees mapping intents to endpoints as part
+  of why Wolverine.Http fizzled out for him. Reads stay resources, or we'd reinvent
+  caching "like SOAP did".
+- **Registering a decider isn't app structure** (Jeff, `larch`).
+  `AddErrands(e => e.Add<PlaceHold, PlaceHoldDecider>("place-hold", window: …))`, which
+  Jeff called beautiful. The README rule "no required app structure" stands.
+- **Invalidations come from a Fisher commit listener** (`larch`, `6df07a6`, `46adb63`).
+  The app maps a document type to read keys once (`When<Hold>(HoldKeys.Changed)`);
+  handlers publish nothing. It sends after commit but outside Wolverine's outbox, so a
+  crash can lose one. Jeff: "close enough" fits the spirit, since we're "taking some of
+  the guess work out of making guesses".
+- **Only the server says which reads are stale** (Jeff, `larch`, `d30cc5a`). Intent
+  types' `invalidates` declarations are gone.
+- **An accepted errand says what it `made`; a guess is retired when memory has that id**
+  (`larch`, `f48d7fe`, `cc6d0f0`). Jeff: invalidations are hints anyway; the id isn't.
+- **A `200` is read by its body** (`larch`, `014d805`). A repeat of a declined errand is
+  a `200`, and the outbox had read it as accepted. Found while writing PROTOCOL §1.
+- **IRMTO is set aside; the specification language comes after the code** (Jeff,
+  `larch`, `ed0ddce`). "See where the code leads us - and we are getting close - and
+  *then* figure out a 'specification language' around it."
+- **Offers: whole errands under one id per group, given by the server** (Jeff's idea,
+  `larch`, `8789148`, `905147a`, `2baed1c`). The same id for every offer in a decline
+  means the existing rule (same id, another body is a `409`) makes them "choose one" with
+  no new code. It made the lookup a load by key and gave `offeredBy` (the "because of"
+  link) for free. The wire is a list of `{ id, choose }`, though C# makes one group, so
+  choices that don't exclude each other can arrive without a breaking change. Jeff:
+  "almost the best hypermedia-as-the-engine-of-application-state thing we've done": the
+  client never builds an offer, it sends back what it was given.
+- **`swap-hold` is one errand, not cancel then place** (`larch`, `ba76aeb`). We believed
+  the two-request version is the "Lego bricks in the least trustworthy place" problem:
+  the browser would be the only one to notice a hold given up for nothing.
+- **`reason`, not `detail`, on `intent-decided`** (Jeff, `larch`, `b9d854c`). `detail`
+  belongs to problem details; a decline isn't a problem.
+- **Unions wait** (Jeff, `larch`). `Decision` is a sealed-record hierarchy. C# 15 has union
+  types, but Jeremy plans a JasperFx major version for .NET 11 that's mostly unions, so we
+  move with that.
+
+### Declines
+
+- **Wolverine middleware for invalidations** (`larch`). It wraps a handler: before the save
+  it sees events but not the documents the inline projection writes, and it misses
+  writes outside handlers. The commit listener sees both.
+- **A "the server restarted, everything is suspect" broadcast** (Jeff's idea, declined
+  together, `larch`). A restart drops every stream, and the reconnect's `subscribed`
+  already means exactly that.
+- **A test for a commit that fails after the listener** (Jeff, `larch`): "if it failed,
+  turn off the lights. go home." Maybe later.
+- **Retiring a guess on "the next read after the outcome"** (Jeff chose it first,
+  `larch`). A probe showed `invalidate` reaches the browser before `intent-decided`, so a
+  read could show the real hold beside the guess. Ordering the stream would only make
+  that rare, not impossible.
+- **Keeping `PUT`/`DELETE /holds/{id}` beside errands**, or keeping PROTOCOL §1 neutral
+  between them (Jeff, `larch`).
+- **Keeping `invalidates` for the no-stream case** (Jeff, `larch`): "we aren't ready to
+  cave in to 'well, if you don't like these peaches, here's another tree you can
+  shake'." Without a stream, a guess now stays until its list is read again. If that
+  case ever matters, the fix is generic (refetch what's watched when the tab becomes
+  visible), not per type.
+- **Keeping IRMTO as the named specification idea, or `holds-in-irmto.md` as evidence**
+  (`larch`). Its one finding, a cancel overtaking a hold, is now answered by errands. The
+  sample domains' form (how it ends, offers, what it starts) is the one that became code.
+- **Building offer groups now** (`larch`). The only real case found, two missing items in
+  one order, is the "partial stock" strain `unsettled/errands.md` already names.
+- **Offer ids made by the client, one per offer** (`larch`). Two tabs could take two swaps.
+- **Amending an errand inside its window** (Jeff, `larch`). Rare; it was an example of
+  things floating on a time window, not a requirement.
+
+### Findings
+
+- **Fisher applies inline projections before it checks the stream version** (`larch`,
+  `8816145`). An `Apply` that throws to guard an invariant beats the version check and
+  turns a lost race into a crash. Let the version check hold the rule (`Errand` ignores a
+  second outcome); handlers retry `ConcurrencyException` themselves. In CLAUDE.md.
+- **A commit's change set lists the projection documents it wrote** (`larch`, probe on
+  Fisher 1.20.2). An inline snapshot comes through in `Updated` (it's an upsert), not
+  `Inserted`. Async projections would go through `IDaemonChangeListener`: not tried.
+- **`invalidate` reaches the browser before `intent-decided`** (`larch`). The listener
+  sends at commit; the outcome goes through Wolverine after. In CLAUDE.md and PROTOCOL.
+- **What it's for** (Jeff, `larch`): a fair spec-driven process. The library is as much
+  framework as is expedient, and no more; the rest is a legible artifact a person and an
+  AI work on together, that can answer "wait, why are we doing it this way?" "If it ends
+  up like a 2001 XML rules engine, we've failed." The proposal Jeff agreed to: the
+  library says what's registered (errands, outcomes, offers, windows), the way ASP.NET
+  emits OpenAPI, and the written artifact is *compared* with that, never executed.
+  Nothing is built for it. README thesis 4 says the language comes later.
+- **Things in the code by accident, and what became of them** (`larch`). The 3-second
+  delay became a declared withdraw window. `HoldStatus.Requested`/`Rejected` became the
+  errand's lifecycle and left the hold. A cancel landing first became withdrawing,
+  settled at one authority. `HoldKeys` stayed, but only the commit listener uses it.
+
+### Fallbacks that became the decision
+
+- **The three domains** were the library, insurance, and a shop: the daily's fallback.
+  No answer was recorded before they were written.
+- **A domain decline is still the transport remedy `no`** (`outbox-store.ts`). Offers ride
+  beside it rather than replacing it. The fallback said nothing would change in the
+  browser until errands existed; they exist, and this one didn't change.
+- **No withdraw button in the demo.** My lean (the client is for sanity checks), raised
+  and never answered. Withdrawing is tested on the server and in PROTOCOL's scenarios.
+
+### Discarded from the write-ahead log
+
+- **Two kinds of telling, the guard, partial stock as a continuation, when a person is
+  told through their channels, a person's history of intentions** (`GET /errands`).
+  They're rules 3, 8 and 9 and "Still straining" in `unsettled/errands.md`, which keeps
+  them until they're built or deleted. The log doesn't need a second copy.
+- **SCIP for the artifact's pointers** (Jeff). Not tried; it comes back with the artifact,
+  if the artifact comes back.
+- **The spec artifact as a graph in a UI** (Jeff: "not the focus now").
+- **Jeff's daily item**, Edge.Errands depending on JasperFx.Events instead of Fisher (so
+  it could sit on Fisher, Marten, or Polecat). Jeff moved it to his own todo.

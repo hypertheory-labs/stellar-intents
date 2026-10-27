@@ -5,11 +5,21 @@ import {
   cachedHttpResource,
   isCandidate,
   mergeWithCandidates,
+  OfferGroup,
   OutboxStore,
   readyToRetire,
 } from 'outbox';
 import { EventLog } from './event-log';
-import { cancelHold, Hold, placeHold, titleName, TITLES } from './holds';
+import {
+  cancelHold,
+  Hold,
+  isSwapHold,
+  placeHold,
+  swapHold,
+  SwapHoldOffer,
+  titleName,
+  TITLES,
+} from './holds';
 
 interface SessionInfo {
   isAuthenticated: boolean;
@@ -17,10 +27,17 @@ interface SessionInfo {
 }
 
 /** A row on screen: the server's hold, or a guess at one. */
+interface Leaving {
+  intentId: string;
+  holdId: string;
+  how: 'cancelling' | 'swapping';
+}
+
 interface Row {
   hold: Hold;
   guess: boolean;
-  cancelling: boolean;
+  /** Being given up: by a cancel, or by a swap. */
+  leaving: Leaving['how'] | null;
 }
 
 @Component({
@@ -79,6 +96,15 @@ interface Row {
                 @if (a.remedy === 'try-again') {
                   <button type="button" (click)="outbox.resend(a.intentId)">Try again</button>
                 }
+                @for (group of a.offers; track group.id) {
+                  @for (choice of group.choose; track $index) {
+                    @if (isSwapHold(choice)) {
+                      <button type="button" (click)="swap(a.intentId, group, choice)">
+                        Give up {{ heldTitle(choice.giveUp) }} instead
+                      </button>
+                    }
+                  }
+                }
                 <button type="button" (click)="outbox.dismiss(a.intentId)">Dismiss</button>
               </li>
             }
@@ -108,19 +134,19 @@ interface Row {
             </thead>
             <tbody>
               @for (row of rows(); track row.hold.id) {
-                <tr [class.guess]="row.guess" [class.cancelling]="row.cancelling">
+                <tr [class.guess]="row.guess" [class.cancelling]="row.leaving">
                   <td>{{ name(row.hold.titleId) }}</td>
                   <td>
                     @if (row.guess) {
                       requested <em>(not confirmed yet)</em>
-                    } @else if (row.cancelling) {
-                      cancelling…
+                    } @else if (row.leaving) {
+                      {{ row.leaving }}…
                     } @else {
                       {{ row.hold.status }}
                     }
                   </td>
                   <td>
-                    @if (!row.guess && !row.cancelling) {
+                    @if (!row.guess && !row.leaving) {
                       <button type="button" (click)="cancel(row.hold)">Cancel</button>
                     }
                   </td>
@@ -219,31 +245,44 @@ export class App {
     () => this.waitList.value()?.filter((h) => h.status === 'placed').length ?? 0,
   );
 
-  /** Intents to cancel that haven't been declined: their holds show "cancelling…". */
-  private readonly cancelling = computed(() =>
+  /**
+   * Intents giving a hold up (cancelling it, or swapping it) that haven't been declined:
+   * their holds show "cancelling…" or "swapping…".
+   */
+  private readonly leaving = computed(() =>
     this.outbox
       .entities()
-      .filter((i) => i.type === cancelHold.name)
       .filter((i) => i.state.status !== 'decided' || i.state.outcome === 'accepted')
-      .map((i) => ({ intentId: i.id, holdId: (i.payload as { holdId: string }).holdId })),
+      .flatMap((i): Leaving[] => {
+        if (i.type === cancelHold.name) {
+          return [
+            { intentId: i.id, holdId: (i.payload as { holdId: string }).holdId, how: 'cancelling' },
+          ];
+        }
+        if (i.type === swapHold.name) {
+          return [{ intentId: i.id, holdId: (i.payload as SwapHoldOffer).giveUp, how: 'swapping' }];
+        }
+        return [];
+      }),
   );
 
   protected readonly rows = computed<Row[]>(() => {
-    const cancelling = new Set(this.cancelling().map((c) => c.holdId));
+    const leaving = new Map(this.leaving().map((l) => [l.holdId, l.how]));
     return mergeWithCandidates(
       this.myHolds.value() ?? [],
-      this.outbox.candidates(placeHold),
+      [...this.outbox.candidates(placeHold), ...this.outbox.candidates(swapHold)],
       (h) => h.id,
     ).map((item) =>
       isCandidate(item)
-        ? { hold: item.value, guess: true, cancelling: false }
-        : { hold: item, guess: false, cancelling: cancelling.has(item.id) },
+        ? { hold: item.value, guess: true, leaving: null }
+        : { hold: item, guess: false, leaving: leaving.get(item.id) ?? null },
     );
   });
 
   constructor() {
-    // Promotion, both kinds. A place-hold is done when memory HAS its hold; a cancel-hold
-    // is done when memory NO LONGER has it. Either way the guess has done its job.
+    // Promotion, both kinds. A place-hold (or a swap) is done when memory HAS the hold it
+    // made; a cancel-hold is done when memory NO LONGER has it. Either way the guess has
+    // done its job.
     effect(() => {
       const memory = this.myHolds.value();
       if (!memory) return;
@@ -251,13 +290,16 @@ export class App {
         .entities()
         .filter((i) => i.state.status === 'decided' && i.state.outcome === 'accepted');
       const placed = readyToRetire(
-        done.filter((i) => i.type === placeHold.name),
+        done.filter((i) => i.type === placeHold.name || i.type === swapHold.name),
         memory,
         (h) => h.id,
       );
       const inMemory = new Set(memory.map((h) => h.id));
-      const cancelled = this.cancelling().filter(
-        (c) => done.some((i) => i.id === c.intentId) && !inMemory.has(c.holdId),
+      const cancelled = this.leaving().filter(
+        (c) =>
+          c.how === 'cancelling' &&
+          done.some((i) => i.id === c.intentId) &&
+          !inMemory.has(c.holdId),
       );
       untracked(() =>
         [...placed, ...cancelled.map((c) => c.intentId)].forEach((id) => this.outbox.retire(id)),
@@ -267,6 +309,18 @@ export class App {
 
   protected place(patronId: string) {
     this.outbox.enqueue(placeHold, { patronId, titleId: this.titleId(), branchCode: 'CEN' });
+  }
+
+  protected readonly isSwapHold = isSwapHold;
+
+  /** The title of one of my holds, for an offer to name. */
+  protected heldTitle(holdId: string) {
+    const hold = this.myHolds.value()?.find((h) => h.id === holdId);
+    return hold ? titleName(hold.titleId) : 'a hold';
+  }
+
+  protected swap(declined: string, offers: OfferGroup, choice: SwapHoldOffer) {
+    this.outbox.takeOffer(swapHold, declined, offers, choice);
   }
 
   protected cancel(hold: Hold) {

@@ -1,4 +1,4 @@
-import { defineIntentType } from 'outbox';
+import { defineIntentType, OfferGroup } from 'outbox';
 
 /** A hold as the server represents it (GET /holds/{id}). */
 export interface Hold {
@@ -28,6 +28,7 @@ interface Errand {
   type: string;
   outcome: 'accepted' | 'declined' | 'withdrawn' | null;
   reason: string | null;
+  offers: OfferGroup[];
   made: string | null;
   withdrawableUntil: string;
 }
@@ -40,7 +41,11 @@ const errandStatus = {
       case 'accepted':
         return { outcome: 'accepted', made: errand.made ?? undefined } as const;
       case 'declined':
-        return { outcome: 'declined', detail: errand.reason ?? undefined } as const;
+        return {
+          outcome: 'declined',
+          detail: errand.reason ?? undefined,
+          offers: errand.offers,
+        } as const;
       case 'withdrawn':
         return { outcome: 'withdrawn' } as const;
       default:
@@ -122,5 +127,46 @@ export const cancelHold = defineIntentType<CancelHoldPayload, never, Errand>({
       `We couldn't cancel your hold on ${titleName(payload.titleId)}${failure.detail ? `: ${failure.detail}` : '.'}`,
     actions: [],
   },
+  status: errandStatus,
+});
+
+/** A swap-hold errand, as the server offers it when placing would go over the limit. */
+export interface SwapHoldOffer {
+  type: 'swap-hold';
+  giveUp: string;
+  titleId: number;
+  branchCode: string;
+}
+
+export const isSwapHold = (choice: unknown): choice is SwapHoldOffer =>
+  (choice as { type?: unknown }).type === 'swap-hold';
+
+/**
+ * Giving up one hold for another, together: only ever taken from a place-hold's offers
+ * (PROTOCOL §1, Offers). The payload is the offer, sent back exactly as it came.
+ */
+export const swapHold = defineIntentType<SwapHoldOffer, Hold, Errand>({
+  name: 'swap-hold',
+  request: ({ id, payload }) => ({ method: 'PUT', url: `/api/errands/${id}`, body: payload }),
+  receipt: ({ payload }) =>
+    `We've received your request to swap a hold for one on ${titleName(payload.titleId)}.`,
+  // The hold it would place. patronId isn't in the offer, and isn't shown: the server
+  // takes it from the session.
+  candidate: ({ id, payload, requestedAt }) => ({
+    id,
+    version: 0,
+    patronId: '',
+    titleId: payload.titleId,
+    branchCode: payload.branchCode,
+    status: 'placed',
+    placedAt: new Date(requestedAt).toISOString(),
+    cancelledAt: null,
+  }),
+  apology: {
+    say: ({ payload }, failure) =>
+      `We couldn't swap a hold for ${titleName(payload.titleId)}${failure.detail ? `: ${failure.detail}` : '.'}`,
+    actions: [],
+  },
+  timeoutMs: 10_000,
   status: errandStatus,
 });

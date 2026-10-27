@@ -1,6 +1,6 @@
 # Intent wire protocol
 
-**Draft 0.5, 2026-10-26.** How a browser and an API agree about who's asking, about
+**Draft 0.6, 2026-10-27.** How a browser and an API agree about who's asking, about
 errands the user asked for, and about reads that have gone stale. Framework-neutral:
 this page is the contract; the Angular `outbox` library and the Wolverine/Fisher backend
 in this repo are one implementation of each side.
@@ -28,6 +28,7 @@ Ideas that aren't built live in [`unsettled/`](../unsettled), until they are or 
 | **Remedy**       | What the person can do about an apology: `try-again`, `wait`, `no`, `sign-in`. See [Remedies](#remedies).            |
 | **Read key**     | The path (and query) of a GET, relative to the API root, e.g. `/holds?patronId=p1`. Identifies a cached read.          |
 | **Errand**       | The server's side of an intent: what it takes on for the person, knowing the answer may be no. One of a closed list of types, at `/errands/{intent id}` ([§1](#1-errands)). |
+| **Offer**        | What a decline says the person can choose instead: whole errands, under one id. Taking one is a `PUT` of it to that id ([§1, Offers](#offers)). |
 
 ---
 
@@ -203,6 +204,61 @@ a conflict. The same id from someone else is a different body.
 **Withdrawing isn't cancelling.** Giving up a placed hold is a new errand moving forward,
 which can be declined: in the reference, `{ "type": "cancel-hold", "holdId": "…" }`.
 
+### Offers
+
+A decline **MAY** say what the person can choose instead. Every offer is another errand,
+whole, ready to send; choosing one is one request.
+
+```mermaid
+sequenceDiagram
+    participant B as Browser
+    participant E as Server
+    B->>E: PUT /errands/e1 {"type":"place-hold","titleId":1010,…}
+    E-->>B: 202
+    E-->>B: intent-decided e1: declined, "You already have 3 holds",<br/>offers: [{id: o1, choose: [swap h1, swap h2, swap h3]}]
+    B->>E: PUT /errands/o1 {"type":"swap-hold","giveUp":"h1","titleId":1010,…}
+    E-->>B: 202
+    E-->>B: intent-decided o1: accepted, made: h4
+```
+
+In the decline's representation (§2) and its `intent-decided` (§3):
+
+```json
+"offers": [
+  {
+    "id": "5f1c…",
+    "choose": [
+      { "type": "swap-hold", "giveUp": "h1…", "titleId": 1010, "branchCode": "CEN" },
+      { "type": "swap-hold", "giveUp": "h2…", "titleId": 1010, "branchCode": "CEN" }
+    ]
+  }
+]
+```
+
+- **Closed.** A server offers only the errand types it lists for the declined type, and
+  nothing else.
+- **The client never builds an offer.** It sends one back exactly as it came, to the id
+  it came with: `PUT /errands/{id}`, `Idempotency-Key: {id}`. The `type` tells the client
+  what the offer *means*, so it can describe it to the person; the server says what's
+  possible. (This is hypermedia: the server drives what can happen next.)
+- **One per id.** Within a group, the person takes one. Taking it is an errand like any
+  other: `202`, decided later, withdrawable, and it can be declined.
+
+| A `PUT` to an offer's id with…           | Answers                                                           |
+| ---------------------------------------- | ----------------------------------------------------------------- |
+| one of its choices, the first time       | `202`, a new errand; its representation says `offeredBy` (§2)     |
+| the same choice again                    | a repeat (§1, Repeats)                                            |
+| another of its choices, once one's taken | `409`: one of them was already chosen                             |
+| anything it didn't offer                 | `409`                                                             |
+| someone else's session                   | `403`                                                             |
+
+- **An offer's id is spent once used.** If the errand taken from it is declined or
+  withdrawn, there's no going back for another choice: the offers described the world
+  when they were made. Asking again gets fresh ones.
+- **`offers` is a list of groups**, each with its own id. Today a decline makes at most
+  one group. Groups would be choices that don't exclude each other (one per missing item,
+  say); a client **MUST** handle any number, including none (`[]`).
+
 ### Problem details
 
 Errors are [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) `application/problem+json`.
@@ -232,7 +288,9 @@ It answers `200` with the errand's representation, and its version as an `ETag`:
   "ask": { "titleId": 42, "branchCode": "MAIN" },
   "outcome": null,
   "reason": null,
+  "offers": [],
   "made": null,
+  "offeredBy": null,
   "requestedAt": "2026-10-26T14:02:11Z",
   "withdrawableUntil": "2026-10-26T14:02:14Z",
   "endedAt": null
@@ -243,8 +301,11 @@ It answers `200` with the errand's representation, and its version as an `ETag`:
   `withdrawn`. It reads the same for every errand type.
 - **`reason`** comes with `declined`, and is written for the person, under the same rules
   as a problem's `detail` ("You already have 3 holds, the limit.").
+- **`offers`** may come with `declined`: what the person can choose instead (§1, Offers).
+  Empty otherwise.
 - **`made`** comes with `accepted` when accepting made something with its own id (a
   place-hold errand's hold). Memory will contain that id (see Merge for display).
+- **`offeredBy`** is the declined errand whose offer this one was taken from, if it was.
 - **`withdrawableUntil`** is when the decision will be made. Until then, withdrawing is
   free, and a receipt can say so ("you can take it back until 14:02").
 - `404` while it isn't recorded (it may still be in flight, or it never arrived). Not an
@@ -300,6 +361,7 @@ data: {"intentId":"0b6e0c3e-…","outcome":"declined","reason":"You already have
 | `outcome`  | `"accepted"` \| `"declined"` \| `"withdrawn"` | Withdrawn: the person took it back before the decision (§1, Withdrawing). |
 | `reason`   | string, optional                  | Declined: why. User-presentable, same rules as a problem's `detail`, and the same as the errand's `reason` (§2). |
 | `made`     | string, optional                  | Accepted, and it made something with its own id (a place-hold errand's hold). Memory will contain this id. |
+| `offers`   | array                             | Declined: what can be chosen instead, as in §2 (§1, Offers). Otherwise `[]`. |
 
 The client resolves the intent. If the intent is unknown to it (another tab, already
 retired) or already decided, the client ignores the event.
@@ -416,7 +478,7 @@ can:
 | ----------- | --------------------------------------------------------------------- |
 | `try-again` | No response, or a `5xx` (`interrupted`). Same id.                     |
 | `wait`      | No answer in time (`unknown`). It may have landed. Same id.           |
-| `no`        | Any other `4xx`, or a decision against. Why is the problem's `detail`, or the decline's `reason`. |
+| `no`        | Any other `4xx`, or a decision against. Why is the problem's `detail`, or the decline's `reason`. A decline may also carry offers (§1). |
 | `sign-in`   | `401` (`interrupted`): the session has ended. Same id, once signed in. |
 
 A status code is enough to choose one.
@@ -454,9 +516,11 @@ A client that stores intents:
    body. Withdrawing works until the decision, and never after.
 3. Errors are problem+json with a user-safe `detail`; so is a decline's `reason`.
 4. Every errand can be fetched for a status check (§2), with an `ETag`.
-5. One SSE stream per user (§3): `subscribed` first, events only after commit, fan-out
+5. A decline's offers are closed, under one id per group, and an offer's id takes only
+   what it offered, once (§1, Offers).
+6. One SSE stream per user (§3): `subscribed` first, events only after commit, fan-out
    per connection, bounded, heartbeats, session auth (§0).
-6. When a write changes what a read would return, send `invalidate` with keys that cover
+7. When a write changes what a read would return, send `invalidate` with keys that cover
    it, including to other affected users.
 
 With more than one server instance, events need a backplane (a broker every instance
@@ -532,6 +596,16 @@ implementation can be checked without reading the reference code.
     never happens. Again → `204`.
 24. `DELETE` after the decision → `409`, and the outcome doesn't change.
 25. Someone else's errand → `403` for a `GET` and a `DELETE`.
+
+**Offers** *(server)*
+
+26. A decline with offers carries the same `offers` in its representation and its
+    `intent-decided`; one without carries `[]`.
+27. `PUT` one of an offer's choices to its id → `202`; once decided, its representation
+    has `offeredBy` set to the declined errand.
+28. Then `PUT` another of its choices to the same id → `409`, and nothing else happens.
+29. `PUT` something the offer didn't include to its id → `409`, and no errand exists
+    there. From another user's session → `403`.
 
 ---
 

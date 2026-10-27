@@ -175,7 +175,7 @@ ending the same way:
      url: (intent) => `/api/errands/${intent.id}`,
      outcome: (errand: Errand) =>
        errand.outcome === 'accepted' ? { outcome: 'accepted', made: errand.made ?? undefined }
-       : errand.outcome === 'declined' ? { outcome: 'declined', detail: errand.reason ?? undefined }
+       : errand.outcome === 'declined' ? { outcome: 'declined', detail: errand.reason ?? undefined, offers: errand.offers }
        : errand.outcome === 'withdrawn' ? { outcome: 'withdrawn' }
        : undefined, // not decided yet
    },
@@ -193,6 +193,25 @@ ending the same way:
    before reconnecting (with backoff), and stops if you're signed out.
 
 An outcome learned any other way goes in with `resolve(id, outcome)`.
+
+**A decline may come with offers** (PROTOCOL §1, Offers): whole errands the person can
+choose one of instead, under one id. Its apology carries them (`offers`), and the app
+takes one with `takeOffer`, which sends it exactly as it came and lets the decline go:
+
+```ts
+@for (group of apology.offers; track group.id) {
+  @for (choice of group.choose; track $index) {
+    @if (isSwapHold(choice)) {
+      <button (click)="outbox.takeOffer(swapHold, apology.intentId, group, choice)">
+        Give up {{ heldTitle(choice.giveUp) }} instead
+      </button>
+    }
+  }
+}
+```
+
+The offer's intent type sends its payload as the body, unchanged. The app never builds an
+offer: `takeOffer` throws for anything that wasn't in the group, even an equal object.
 
 ### 6. Show memory and guesses together, then promote
 
@@ -270,6 +289,7 @@ intents are sent but not stored. For tests, pass `storage: memoryIntentStorage()
 | Member                      | What it does                                                                                       |
 | --------------------------- | -------------------------------------------------------------------------------------------------- |
 | `enqueue(type, payload)`    | Creates the intent (new id), publishes `intentRequested`, sends it. Returns the intent.            |
+| `takeOffer(type, from, offers, choice)` | Sends one of a decline's offers, unchanged, as an intent with the offers' id; dismisses `from`. A second take on the page returns the first. |
 | `resolve(id, outcome)`      | Records an outcome learned some other way. Ignored for unknown ids and decided intents.            |
 | `settle(id, outcome)`       | The same, as the stream says it: `accepted` (with what it `made`), `declined` (with a `detail`), or `withdrawn`. |
 | `checkStatus(id)`           | Asks the type's `status.url`; settles if the answer is decided. A 404 is "not recorded yet".       |
@@ -280,7 +300,7 @@ intents are sent but not stored. For tests, pass `storage: memoryIntentStorage()
 | `dismiss(id)`               | The user let it go: removes the intent, publishes `intentDismissed`.                               |
 | `entities()`, `entityMap()` | Every intent still held (from `withEntities`).                                                     |
 | `receipts()`                | `{ intentId, status, text }` for every intent held. Always true.                                   |
-| `apologies()`               | `{ intentId, status, remedy, message, actions }` for `unknown`, declined, `interrupted`.          |
+| `apologies()`               | `{ intentId, status, remedy, message, actions, offers }` for `unknown`, declined, `interrupted`.  |
 | `candidates(type)`          | `Candidate<T>[]` for that type, except ones decided against.                                       |
 
 ### Sending

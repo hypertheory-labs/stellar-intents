@@ -44,16 +44,16 @@ problem details, `ETag`) and Server-Sent Events, with conventions written down.
 
 ## What's here, and how far along
 
-| Path                                                               | What                                                                                                                                                                                                         | Status                               |
-| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------ |
-| [`docs/PROTOCOL.md`](docs/PROTOCOL.md)                             | The intent wire protocol: errands, status checks, the event stream, reads, conformance scenarios. Only what's built.                                                                                         | Draft 0.5                            |
-| [`unsettled/`](unsettled)                                          | Ideas not built yet: errands' shape and three sample domains, the protocol's proposed parts, a backplane. Not decisions.                                                                                     | Speculative                          |
-| [`server/dotnet/Edge.Sse`](server/dotnet/Edge.Sse)                 | Server-Sent Events for the Edge: groups of connections, sent only after commit (Wolverine), heartbeats, an opening event, ends streams on shutdown. Knows nothing about intents.                             | Extracted from the reference, tested |
-| [`server/dotnet/Edge.Errands`](server/dotnet/Edge.Errands)         | Errands at the Edge: `PUT`/`GET`/`DELETE /errands/{id}`, a decision after a declared withdraw window, one outcome, a reason on every decline ([the shape](unsettled/errands.md)). Knows nothing about holds. | Place and cancel a hold, tested      |
-| [`server/dotnet/ReferenceApi`](server/dotnet/ReferenceApi)         | A reference server: library holds on Wolverine + Fisher (event-sourced, SQLite), .NET 10. Holds change only through errands; `/holds` is reads.                                                              | Protocol §0–4, tested                |
-| [`client/angular/projects/outbox`](client/angular/projects/outbox) | The browser's half: intents, receipts, candidates, apologies; the event stream; a read cache.                                                                                                                | Tested; intents stored in IndexedDB  |
-| [`client/angular/projects/demo`](client/angular/projects/demo)     | A small holds page, for sanity checks against the server.                                                                                                                                                    | Runnable                             |
-| [`examples/angular-holds`](examples/angular-holds)                 | A page from the course these ideas came out of.                                                                                                                                                              | Reference code, not runnable here    |
+| Path                                                               | What                                                                                                                                                                                                                        | Status                                |
+| ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
+| [`docs/PROTOCOL.md`](docs/PROTOCOL.md)                             | The intent wire protocol: errands, status checks, the event stream, reads, conformance scenarios. Only what's built.                                                                                                        | Draft 0.6                             |
+| [`unsettled/`](unsettled)                                          | Ideas not built yet: errands' shape and three sample domains, the protocol's proposed parts, a backplane. Not decisions.                                                                                                    | Speculative                           |
+| [`server/dotnet/Edge.Sse`](server/dotnet/Edge.Sse)                 | Server-Sent Events for the Edge: groups of connections, sent only after commit (Wolverine), heartbeats, an opening event, ends streams on shutdown. Knows nothing about intents.                                            | Extracted from the reference, tested  |
+| [`server/dotnet/Edge.Errands`](server/dotnet/Edge.Errands)         | Errands at the Edge: `PUT`/`GET`/`DELETE /errands/{id}`, a decision after a declared withdraw window, one outcome, a reason on every decline, closed offers ([the shape](unsettled/errands.md)). Knows nothing about holds. | Place, cancel, and swap holds; tested |
+| [`server/dotnet/ReferenceApi`](server/dotnet/ReferenceApi)         | A reference server: library holds on Wolverine + Fisher (event-sourced, SQLite), .NET 10. Holds change only through errands; `/holds` is reads.                                                                             | Protocol §0–4, tested                 |
+| [`client/angular/projects/outbox`](client/angular/projects/outbox) | The browser's half: intents, receipts, candidates, apologies; the event stream; a read cache.                                                                                                                               | Tested; intents stored in IndexedDB   |
+| [`client/angular/projects/demo`](client/angular/projects/demo)     | A small holds page, for sanity checks against the server.                                                                                                                                                                   | Runnable                              |
+| [`examples/angular-holds`](examples/angular-holds)                 | A page from the course these ideas came out of.                                                                                                                                                                             | Reference code, not runnable here     |
 
 The browser client got built first because there was a half-finished outbox to start
 from. The thinking has since moved to the Edge, and so has the work: the client is for
@@ -99,11 +99,11 @@ Not a roadmap, just the next questions:
 
 Three sample domains (the library, insurance, a shop) gave errands their shape:
 [eleven rules](unsettled/errands.md). Built so far: one outcome, a reason on every
-decline, a declared window for withdrawing, cancelling as a forward errand, and
-invalidations from what a commit wrote. Next, from the rules not built:
+decline, a declared window for withdrawing, cancelling as a forward errand,
+invalidations from what a commit wrote, and **offers**: a decline that says what can be
+chosen instead ("give up Kindred instead"), each offer a whole errand the browser sends
+back as it came, one per id. Next, from the rules not built:
 
-- **Offers.** A decline that says what can be done instead ("swap one of your holds"),
-  each offer another errand, chosen with one request.
 - **What starts what.** An accepted hold starting _tell me when it's ready_, and the
   "because of" link between them.
 - **Promised messages.** Telling a person something durably, through their channels, when

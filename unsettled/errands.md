@@ -1,6 +1,6 @@
 # Errands: the shape
 
-**2026-10-26.** Partly built: rules 1, 2 (without offers), 5, 6 and 11, in
+**2026-10-26.** Partly built: rules 1, 2, 4, 5, 6 and 11, in
 `server/dotnet/Edge.Errands` and PROTOCOL §1–2. This is what three sample domains,
 written the same way, have in common: [the library](errands-library.md),
 [insurance](errands-insurance.md), and [a shop](errands-shop.md). What's the same in all

@@ -32,10 +32,10 @@ public static class ProtocolEvents
     /// <param name="patronId">The patron to tell.</param>
     /// <param name="intentId">The command's Idempotency-Key.</param>
     /// <param name="outcome">Final: an outcome never changes.</param>
-    /// <param name="detail">Shown to the user, so written for a person (same rules as a problem's detail).</param>
+    /// <param name="reason">Why it was declined. Shown to the user, so written for a person.</param>
     /// <param name="made">Accepted, and it made something with its own id: memory will contain it.</param>
     public static ServerSentEvent IntentDecided(
-        string patronId, Guid intentId, IntentOutcome outcome, string? detail = null, Guid? made = null,
+        string patronId, Guid intentId, IntentOutcome outcome, string? reason = null, Guid? made = null,
         IReadOnlyList<OfferView>? offers = null) =>
         new(PatronGroup(patronId), "intent-decided", new
         {
@@ -46,7 +46,7 @@ public static class ProtocolEvents
                 IntentOutcome.Declined => "declined",
                 _ => "withdrawn",
             },
-            detail,
+            reason,
             made,
             offers = offers ?? [],
         });

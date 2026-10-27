@@ -131,7 +131,7 @@ describe('the event stream (PROTOCOL §3)', () => {
     expect(statusOf(ctx.store, intent.id)).toBe('received');
   });
 
-  it('intent-decided settles the intent, with the detail for the apology', () => {
+  it('intent-decided settles the intent, with the reason for the apology', () => {
     const ctx = setup();
     const placed = received(ctx);
     const refused = received(ctx);
@@ -140,7 +140,7 @@ describe('the event stream (PROTOCOL §3)', () => {
     ctx.latest().emit('intent-decided', {
       intentId: refused.id,
       outcome: 'declined',
-      detail: 'You already have 3 holds, the limit.',
+      reason: 'You already have 3 holds, the limit.',
     });
 
     expect(statusOf(ctx.store, placed.id)).toBe('accepted');

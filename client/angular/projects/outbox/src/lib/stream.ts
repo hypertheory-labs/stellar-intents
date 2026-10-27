@@ -147,7 +147,7 @@ function follow({
       const decided = parse<{
         intentId: string;
         outcome: string;
-        detail?: string | null;
+        reason?: string | null;
         made?: string | null;
       }>(event);
       if (!decided) return;
@@ -162,7 +162,7 @@ function follow({
         case 'declined':
           return outbox.settle(decided.intentId, {
             outcome: 'declined',
-            detail: decided.detail ?? undefined,
+            detail: decided.reason ?? undefined,
           });
         // Anything else is a newer server than this client: not an outcome we can keep.
       }

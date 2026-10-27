@@ -54,7 +54,7 @@ public class EventStreamTests(AppFixture app)
         var decided = await stream.NextOf("intent-decided");
         decided.GetProperty("intentId").GetGuid().ShouldBe(fourth);
         decided.GetProperty("outcome").GetString().ShouldBe("declined");
-        decided.GetProperty("detail").GetString().ShouldBe("You already have 3 holds, the limit.");
+        decided.GetProperty("reason").GetString().ShouldBe("You already have 3 holds, the limit.");
         // the same offers GET /errands/{id} has: one id, a swap for each hold
         var offers = decided.GetProperty("offers");
         offers.GetArrayLength().ShouldBe(1);

@@ -291,14 +291,14 @@ That rule replaces replay. It is always correct and far simpler than `Last-Event
 
 ```
 event: intent-decided
-data: {"intentId":"0b6e0c3e-…","outcome":"declined","detail":"You already have 3 holds, the limit."}
+data: {"intentId":"0b6e0c3e-…","outcome":"declined","reason":"You already have 3 holds, the limit."}
 ```
 
 | Field      | Type                              | Notes                                                       |
 | ---------- | --------------------------------- | ----------------------------------------------------------- |
 | `intentId` | string (UUID)                     | The errand's id: its `Idempotency-Key`.                     |
 | `outcome`  | `"accepted"` \| `"declined"` \| `"withdrawn"` | Withdrawn: the person took it back before the decision (§1, Withdrawing). |
-| `detail`   | string, optional                  | User-presentable, same rules as a problem's `detail`.       |
+| `reason`   | string, optional                  | Declined: why. User-presentable, same rules as a problem's `detail`, and the same as the errand's `reason` (§2). |
 | `made`     | string, optional                  | Accepted, and it made something with its own id (a place-hold errand's hold). Memory will contain this id. |
 
 The client resolves the intent. If the intent is unknown to it (another tab, already
@@ -416,7 +416,7 @@ can:
 | ----------- | --------------------------------------------------------------------- |
 | `try-again` | No response, or a `5xx` (`interrupted`). Same id.                     |
 | `wait`      | No answer in time (`unknown`). It may have landed. Same id.           |
-| `no`        | Any other `4xx`, or a decision against. Why is the problem's `detail`. |
+| `no`        | Any other `4xx`, or a decision against. Why is the problem's `detail`, or the decline's `reason`. |
 | `sign-in`   | `401` (`interrupted`): the session has ended. Same id, once signed in. |
 
 A status code is enough to choose one.

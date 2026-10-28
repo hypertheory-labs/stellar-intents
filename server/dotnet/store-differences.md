@@ -15,6 +15,32 @@ guard a rule beats the version check, so a lost race becomes a crash instead of 
 `ConcurrencyException` (`Edge.Errands/Errand.cs`).
 Fisher: yes. Marten: not checked. Polecat: not checked.
 
+**With `AutoCreate.None`, `ApplyAllDatabaseChangesOnStartup()` creates nothing,** not
+even the event tables (only Wolverine's own tables appear). With `CreateOnly` or
+`CreateOrUpdate` it creates what's registered. With `None`, calling
+`ApplyAllConfiguredChangesToDatabaseAsync()` yourself does create it, which is what
+`Edge.Errands.Fisher.Tests` does.
+Fisher: yes. Marten: not checked. Polecat: not checked.
+
+**Where the explicit schema apply lives.** Fisher: `IDocumentStore.ApplyAllConfiguredChangesToDatabaseAsync()`.
+Marten, as we remember its API: `store.Storage.ApplyAllConfiguredChangesToDatabaseAsync()`.
+Not run against Marten here.
+
+**A projection's document needs no `Schema.For<T>()`.** `Projections.Snapshot<Errand>()`
+alone gets the errand its table from an explicit apply. A document written directly
+(`ErrandOffer`) does need registering.
+Fisher: yes. Marten: not checked. Polecat: not checked.
+
+## Packaging
+
+**The aggregate source generator comes with the store package.** JasperFx.Events
+dispatches an aggregate's `Apply` methods through code a source generator writes into
+the aggregate's own assembly. Fisher bundles the generator, so a library that drops its
+Fisher reference stops running it, and nothing says so until startup throws
+`InvalidProjectionException`. Edge.Errands references `JasperFx.Events.SourceGenerator`
+directly now. JasperFx.Events' own build file says Marten bundles it too.
+Fisher: yes. Marten: by that comment, not checked. Polecat: not checked.
+
 ## The shared interfaces
 
 **No one interface has events, loading, and storing.** `IDocumentSessionOperations` has

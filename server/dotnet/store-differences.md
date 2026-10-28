@@ -52,7 +52,7 @@ dispatches an aggregate's `Apply` methods through code a source generator writes
 the aggregate's own assembly. Fisher bundles the generator, so a library that drops its
 Fisher reference stops running it, and nothing says so until startup throws
 `InvalidProjectionException`. Edge.Errands references `JasperFx.Events.SourceGenerator`
-directly now. JasperFx.Events' own build file says Marten bundles it too.
+directly now, which Jeremy confirms is the way for a library with projections. JasperFx.Events' own build file says Marten bundles it too.
 Fisher: yes. Marten: by that comment, not checked. Polecat: not checked.
 
 **Each store's configuration is its own type.** `AddFisher` returns

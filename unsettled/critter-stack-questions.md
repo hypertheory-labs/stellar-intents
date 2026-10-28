@@ -34,9 +34,10 @@ targets file explains that store packages bundle it (Marten too) and dedupes cop
 **What we did.** Edge.Errands references `JasperFx.Events.SourceGenerator` 2.87.1 itself,
 with `PrivateAssets="all"`, so apps don't get a second copy from us.
 
-**What we'd like to know.**
-- Is a direct reference to the standalone generator the intended way for a store-neutral
-  library?
+**Answered.** A direct reference is the way. Jeremy (via Jeff, 2026-10-28): "Yeah,
+think you'll just have to add the source generator for projection support."
+
+**Still open.**
 - Is `PrivateAssets="all"` right? The exception's own text warns that it hides the
   analyzer from downstream projects. We think that's fine (an app's aggregates get it
   from their store package), but we're guessing.

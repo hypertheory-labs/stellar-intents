@@ -1,5 +1,6 @@
 using Fisher;
 using JasperFx;
+using JasperFx.Events.Documents;
 using Wolverine;
 using Wolverine.ErrorHandling;
 using Wolverine.Runtime.Handlers;
@@ -34,15 +35,21 @@ public record DecideErrand(Guid Id);
 // WHY each handler saves its own session: an app may or may not have Wolverine apply
 // transactions automatically, and the library shouldn't require either. The session is
 // Wolverine's, so the messages sent or scheduled before saving commit with it.
+//
+// WHY JasperFx's interfaces, and not Fisher's IDocumentSession: so the same handlers run
+// on Marten, Fisher, or Polecat. No one interface has events, loading, and saving, so a
+// handler that needs more than one asks for each; Wolverine passes the same session as
+// all of them.
 
 public static class RequestErrandHandler
 {
     public static async Task<RequestReply> Handle(
-        RequestErrand command, IDocumentSession session, IMessageContext bus, ErrandRegistry registry)
+        RequestErrand command, IDocumentSessionOperations session, IDocumentReadOperations documents,
+        IMessageContext bus, ErrandRegistry registry)
     {
         var existing = await session.Events.FetchLatest<Errand>(command.Id);
         // Offered: this id was given out by a decline, for one of its asks.
-        var offer = await session.LoadAsync<ErrandOffer>(command.Id);
+        var offer = await documents.LoadAsync<ErrandOffer>(command.Id);
         if (existing is not null)
         {
             var same = existing.Type == command.Type
@@ -78,6 +85,7 @@ public static class DecideErrandHandler
     // Declared here so the library doesn't depend on the app's error policies.
     public static void Configure(HandlerChain chain) => chain.OnException<ConcurrencyException>().RetryTimes(3);
 
+    // Fisher's session, for now, because it's what IDecide hands a decider.
     public static async Task<OutgoingMessages> Handle(
         DecideErrand command, IDocumentSession session, ErrandRegistry registry, CancellationToken cancellation)
     {
@@ -129,7 +137,7 @@ public static class WithdrawErrandHandler
     // WHY: the same race from the other side; the retry finds it decided, and answers 409.
     public static void Configure(HandlerChain chain) => chain.OnException<ConcurrencyException>().RetryTimes(3);
 
-    public static async Task<Withdrawal> Handle(WithdrawErrand command, IDocumentSession session, IMessageContext bus)
+    public static async Task<Withdrawal> Handle(WithdrawErrand command, IDocumentSessionOperations session, IMessageContext bus)
     {
         var stream = await session.Events.FetchForWriting<Errand>(command.Id);
         var errand = stream.Aggregate;

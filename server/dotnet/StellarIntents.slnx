@@ -4,6 +4,8 @@
   <Project Path="Edge.Errands.Fisher/Edge.Errands.Fisher.csproj" />
   <Project Path="Edge.Errands.Fisher.Tests/Edge.Errands.Fisher.Tests.csproj" />
   <Project Path="Edge.Errands.StoreTests/Edge.Errands.StoreTests.csproj" />
+  <Project Path="Edge.Errands.Marten/Edge.Errands.Marten.csproj" />
+  <Project Path="Edge.Errands.Marten.Tests/Edge.Errands.Marten.Tests.csproj" />
   <Project Path="Edge.Sse/Edge.Sse.csproj" />
   <Project Path="Edge.Sse.Tests/Edge.Sse.Tests.csproj" />
   <Project Path="ReferenceApi/ReferenceApi.csproj" />

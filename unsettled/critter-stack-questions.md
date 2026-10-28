@@ -67,12 +67,30 @@ think that's right: dynamic or static is the app's choice.
   of `Program.cs`. Our ReferenceApi ends with `app.Run()`, which is why
   `dotnet run -- codegen preview` started the server instead of previewing the code.
 
+**What we tried** (2026-10-28, Fisher; the ReferenceApi now ends with
+`RunJasperFxCommands`; the static-mode changes and generated files weren't kept).
+- `codegen write` in the ReferenceApi wrote the library handlers (Edge.Errands' four,
+  Edge.Sse's one) into `ReferenceApi/Internal/Generated/WolverineHandlers/`, beside the
+  app's own. The generated code names the store's `OutboxedSessionFactory`, which is fine
+  there: the app knows its store, so the library stays neutral.
+- Static mode with `WolverineFx.RuntimeCompilation` removed: started, and request, read,
+  the scheduled decision, and withdraw all worked through HTTP, without Roslyn.
+- Deleting one generated handler file breaks the app's build (the generated registry
+  names it), so that mistake can't ship.
+- **A handler the library adds later is silently missing.** We added a handler to
+  Edge.Errands, rebuilt without running `codegen write` again, and started in static
+  mode. It started without complaint: Wolverine logged "Using pre-generated Wolverine
+  HandlerRegistry (6 handler types); skipping assembly scan", so it never saw the new
+  handler, and the 6.30 mismatch check can't catch what it never discovers. That's what
+  upgrading a library package would do to an app that doesn't regenerate. (We didn't send
+  the missing handler a message, so what happens then is untested.)
+
 **What we'd like to know.**
 - Is "a library never references `WolverineFx.RuntimeCompilation`" right?
-- Neither page says whether `codegen write` pre-generates handlers from an assembly added
-  by `Discovery.IncludeAssembly`. We could find out ourselves: switch the ReferenceApi to
-  `RunJasperFxCommands`, run `codegen write`, start it in static mode, and see whether
-  the errand handlers load.
+- Is the silently-missing library handler known? Could static mode compare the
+  pre-generated registry with the handlers in `Discovery.IncludeAssembly` assemblies,
+  or should the docs tell apps to run `codegen write` again whenever a package with
+  handlers changes? (This might make a docs PR.)
 - Our handlers ask for JasperFx's interfaces (`IDocumentSessionOperations`,
   `IDocumentReadOperations`, `IDocumentWriteOperations`) instead of a store's session.
   On Fisher, the generated code opens one outboxed session and casts it to each. Is that

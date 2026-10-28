@@ -362,3 +362,118 @@ offers. PROTOCOL went from 0.4 to 0.6.
 - **The spec artifact as a graph in a UI** (Jeff: "not the focus now").
 - **Jeff's daily item**, Edge.Errands depending on JasperFx.Events instead of Fisher (so
   it could sit on Fisher, Marten, or Polecat). Jeff moved it to his own todo.
+
+## `rowan` (2026-10-28)
+
+The round: Edge.Errands off Fisher, onto JasperFx.Events' interfaces, so it runs on
+Marten too (Polecat later). It picked up larch's last item, Jeff's daily item that he had
+moved to his own todo. Then the ReferenceApi audit's question: where the protocol glue
+goes. Along the way, two logs for the Critter Stack team:
+`server/dotnet/store-differences.md` (facts, per store) and
+`unsettled/critter-stack-questions.md` (what we couldn't answer ourselves).
+
+### Decisions
+
+- **Edge.Errands uses only JasperFx.Events' interfaces** (`rowan`, `d91e2fe`, `c033ac2`,
+  `f33132b`). Handlers ask Wolverine for `IDocumentSessionOperations` and the read/write
+  interfaces, which are one outboxed session underneath (seen in generated code).
+  `GET /errands/{id}` goes through the bus, because the read-only interface has no
+  `FetchLatest`. Why now (my push-back on Jeff's "Fisher is the lowest common
+  denominator"): Fisher was only the store we'd tested, not proven smallest, and the
+  people the thesis is for are on Marten. The decider API had settled the day before.
+- **Deciders get `ErrandSession`: `Events` and `Query`** (`rowan`, `f33132b`; my
+  fallback, which Jeff agreed: "agree with it all"). A type of our own, because no
+  JasperFx interface has both. Only what the hold deciders use.
+- **A package per store: `AddFisher(...)` / `AddMarten(...).IntegrateWithErrands()`**
+  (Jeff, `rowan`, `e8edc0b`, `b88375d`). Separate packages are "probably the
+  consistent-with-the-rest-of-jasperfx move", though he doesn't like it; the extension
+  was his idea, after I found nothing tested needs the `Errand` snapshot. Each store's
+  configuration is its own type, so there's nothing shared to hang it on. Jeff doubted it
+  later, from reading the other `IntegrateWith...` methods, and dropped the doubt:
+  "pretty unfounded". The names are for now: "let's save naming things for another round!"
+- **`ErrandOffer` is registered** (`rowan`, `e8edc0b`). Nothing registered it; with
+  on-demand tables off, which is how production apps run, every request fails (the
+  request handler loads an offer each time). Found by the test written to justify the
+  package.
+- **Edge.Errands references `JasperFx.Events.SourceGenerator` itself, private, same version
+  as JasperFx.Events** (`rowan`, `e8edc0b`, `1db7357`). It used to come bundled with
+  Fisher; without it, the build passes and startup throws. Jeremy (via Jeff): "you'll just
+  have to add the source generator for projection support", and private plus matching
+  versions is "Always safest, yes."
+- **One shared store suite** (`rowan`, `66747fd`): eight tests at the bus, no HTTP, no
+  holds, run by `Edge.Errands.Fisher.Tests` and `Edge.Errands.Marten.Tests` (Postgres in
+  Docker, port 5499). On-demand tables off; `AddResourceSetupOnStartup()` builds the
+  registered schema and Wolverine's tables on both stores.
+- **The split for the protocol glue** (Jeff: "the split seems to be the right way to go",
+  `rowan`, `4c21973`). Edge.Errands owns `intent-decided`'s body
+  (`ErrandEnded.ToIntentDecided()`), because its fields are an errand's, and apps copying
+  them get them wrong quietly. The app only says who hears it. The wire didn't change.
+- **The ReferenceApi ends with `RunJasperFxCommands`** (`rowan`, `6445d75`), so
+  `codegen preview` and `codegen write` work.
+
+### Declines
+
+- **A third "Edge" package for the glue** (`rowan`). It would keep the README rule's
+  letter, but a package whose only job is "use both" is the framework the first rule
+  warns about, and invalidations would need it per store: two more packages for about
+  100 lines, mostly the app's own decisions.
+- **Leaving all the glue in the app** (`rowan`). Each app would copy `intent-decided`'s
+  shape, the part apps get wrong quietly.
+- **`Invalidations` in a library, for now** (`rowan`). Implementing JasperFx's
+  `IDocumentCommitListener` doesn't make it store-neutral: Marten's listeners don't
+  implement it, so it needs an adapter per store, which costs more than the class. Until
+  a second app wants it, or the team answers question 7.
+- **Three parameters on `Decide` instead of `ErrandSession`** (`rowan`). Every decider's
+  signature gets longer for a gap in someone else's interfaces.
+- **`LoadAsync` and `Store` on `ErrandSession`** (`rowan`). No decider uses them; add one
+  when a decider needs it.
+- **Leaving `ErrandOffer` for the app to register** (Jeff's first lean, `rowan`). The
+  extension keeps an internal document type out of the app's sight, in one line.
+- **A Polecat package this round** (Jeff, `rowan`). No SQL Server here (he "shuddered" at
+  running it on this Mac); he has a Windows machine for it later. Every entry in
+  `store-differences.md` says "Polecat: not checked".
+- **Committing generated handler code, or static mode** (`rowan`). The static-mode run
+  was an experiment; its results are in question 2.
+- **Fixing the xUnit1051 analyzer warnings** (`rowan`). They predate the round.
+
+### Findings
+
+Most are in `store-differences.md` and `unsettled/critter-stack-questions.md`, which
+keep them until they're answered. These are the ones that don't live there, or matter
+beyond them.
+
+- **In static mode, a handler a library adds later is silently missing** (`rowan`,
+  question 2). Static mode uses the pre-generated registry and skips the assembly scan,
+  so 6.30's mismatch check never sees it. What upgrading a package with handlers does to
+  an app that doesn't run `codegen write` again. Jeff: "this might make a good docs PR
+  eventually."
+- **Nothing tested needs the `Errand` snapshot** (`rowan`). With it removed, all tests
+  passed: an errand is at most three events. It stays, unchanged. Nothing tests the
+  errand `ETag`, so whether `Version` is right without the snapshot is unknown.
+- **`Idempotency-Key` now only repeats the URL** (`rowan`, the audit). It equals the id in
+  `PUT /errands/{id}`, so it does nothing for idempotency, and nothing checks that the
+  two match. Its one remaining job is the CSRF defence. Not discussed; changing it means
+  changing PROTOCOL §1.
+- **The README's "never by importing each other" predates both server libraries**
+  (`rowan`). It's in the first commit (`a02d28a`), when the pieces were the browser's and
+  the wire. Jeff: it "probably is from prior to us figuring out the wire stuff". I had
+  stretched it to two .NET libraries in one process. Rewording it is open.
+- **The race test can't tell what Marten does first** (`rowan`). It passes on Marten, but
+  `Errand`'s `Apply` never throws, so it can't tell whether Marten runs inline
+  projections before the version check, as Fisher does (question 8). A test-only aggregate
+  that throws would; it tests the store, not errands, so it wasn't built.
+
+### Fallbacks that became the decision, or didn't happen
+
+- None became the decision silently: Jeff answered the daily ("agree with it all").
+- **Polecat's fallback said `unsettled/` would say "should work, untested".** I didn't
+  write that note: `store-differences.md` already says "Polecat: not checked" on every
+  entry. Told Jeff; no answer.
+
+### Discarded from the write-ahead log
+
+- **Fisher's `IChangeSet` doesn't implement `IDocumentChangeSet`**, **one outboxed session
+  for every interface**, **three ways Wolverine's tables weren't made on Marten.** Each
+  is in `store-differences.md` or question 3 now.
+- **`ErrandSession` without `LoadAsync`/`Store`.** Promoted, as a decline.
+- **Jeff's doubt about `IntegrateWithErrands()`.** He dropped it; recorded under Decisions.

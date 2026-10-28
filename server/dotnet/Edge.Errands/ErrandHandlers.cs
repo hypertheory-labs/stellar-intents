@@ -26,6 +26,10 @@ public enum Requested { Created, Repeated, Conflict, AlreadyChosen, NotOffered, 
 /// <param name="Errand">Null when nothing was created or found (NotOffered, NotYours).</param>
 public record RequestReply(Requested Result, Errand? Errand);
 
+public record ReadErrand(Guid Id);
+/// <param name="Errand">Null when there's no such errand.</param>
+public record ReadReply(Errand? Errand);
+
 public record WithdrawErrand(Guid Id, string Requester);
 public enum Withdrawal { Withdrawn, AlreadyWithdrawn, AlreadyDecided, NotFound, NotYours }
 
@@ -76,6 +80,14 @@ public static class RequestErrandHandler
         errand.Version = 1;
         return new RequestReply(Requested.Created, errand);
     }
+}
+
+public static class ReadErrandHandler
+{
+    // WHY a writing session for a read: JasperFx's read-only events interface
+    // (IQueryEventStore) has no FetchLatest. Nothing is written, so saving does nothing.
+    public static async Task<ReadReply> Handle(ReadErrand command, IDocumentSessionOperations session) =>
+        new(await session.Events.FetchLatest<Errand>(command.Id));
 }
 
 public static class DecideErrandHandler

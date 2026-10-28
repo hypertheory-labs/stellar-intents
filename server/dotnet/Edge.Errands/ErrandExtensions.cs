@@ -124,11 +124,13 @@ public static class ErrandExtensions
             }
         });
 
-        group.MapGet("/{id:guid}", async (Guid id, HttpContext context, IQuerySession session) =>
+        group.MapGet("/{id:guid}", async (Guid id, HttpContext context, IMessageBus bus) =>
         {
             if (requesterOf(context) is not { } requester) return Results.Unauthorized();
-            var errand = await session.Events.FetchLatest<Errand>(id);
-            if (errand is null) return Results.NotFound();
+            // WHY through the bus, like PUT and DELETE: there, Wolverine opens the session,
+            // so this file doesn't need to know which store it is.
+            if ((await bus.InvokeAsync<ReadReply>(new ReadErrand(id))).Errand is not { } errand)
+                return Results.NotFound();
             // WHY 403 and not 404: a 404 says there's no such errand, which isn't true.
             if (errand.Requester != requester) return Forbidden();
             context.Response.Headers.ETag = $"\"{errand.Version}\"";

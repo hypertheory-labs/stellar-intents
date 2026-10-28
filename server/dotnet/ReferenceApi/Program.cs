@@ -8,6 +8,7 @@ using ReferenceApi.Dev;
 using ReferenceApi.Holds;
 using ReferenceApi.Session;
 using Fisher;
+using JasperFx;
 using JasperFx.Events.Daemon;
 using JasperFx.Events.Projections;
 using Scalar.AspNetCore;
@@ -108,7 +109,8 @@ app.MapErrands("/errands", context => context.User.PatronId())
     .WithTags("Errands");
 app.MapDevReset(); // Development only; see Dev/DevReset.cs
 app.MapDevSignIn(); // Development only; see Session/DevSignIn.cs
-app.Run();
+// WHY not app.Run(): this also answers JasperFx's commands, e.g. `dotnet run -- codegen write`.
+return await app.RunJasperFxCommands(args);
 
 // visible to the tests (Alba boots the real app)
 public partial class Program;

@@ -41,8 +41,8 @@ in cold, so every word in its vocabulary must change code or catch a bug, or it 
 - **Fisher applies inline projections before it checks the stream version.** An `Apply`
   that throws to guard an invariant beats the version check and turns a lost race into a
   crash. Let the version check hold the rule; handlers retry `ConcurrencyException`.
-- Edge.Errands is moving from Fisher to JasperFx.Events' interfaces, toward Marten and
-  Polecat too. Log every store difference found along the way in
+- Edge.Errands uses only JasperFx.Events' interfaces; `Edge.Errands.Fisher` and
+  `.Marten` tell each store what it keeps (Polecat later). Log every store difference in
   `server/dotnet/store-differences.md` (the JasperFx core team wants that list), and
   every question we can't answer ourselves, with what we saw and did, in
   `unsettled/critter-stack-questions.md`.

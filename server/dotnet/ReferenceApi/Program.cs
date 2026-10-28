@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Edge.Errands;
+using Edge.Errands.Fisher;
 using Edge.Sse;
 using ReferenceApi.Streaming;
 using ReferenceApi.Dev;
@@ -25,6 +26,8 @@ builder.Services.AddFisher(options =>
         options.InitialData.Add(new SeedHolds());
     })
     .IntegrateWithWolverine()
+    // what errands are stored as (Edge.Errands.Fisher)
+    .IntegrateWithErrands()
     .ApplyAllDatabaseChangesOnStartup()
     .SeedInitialDataOnStartup()
     .AddAsyncDaemon(DaemonMode.Solo);

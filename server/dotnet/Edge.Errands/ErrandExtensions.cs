@@ -1,6 +1,4 @@
 using System.Text.Json;
-using Fisher;
-using JasperFx.Events.Projections;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -51,7 +49,10 @@ public record OfferView(Guid Id, IReadOnlyList<JsonElement> Choose)
 
 public static class ErrandExtensions
 {
-    /// <summary>Registers the errand types this app runs, and stores errands with Fisher.</summary>
+    /// <summary>
+    /// Registers the errand types this app runs. The store needs telling too: for Fisher,
+    /// AddFisher(...).IntegrateWithErrands() (Edge.Errands.Fisher).
+    /// </summary>
     public static IServiceCollection AddErrands(this IServiceCollection services, Action<ErrandOptions> configure)
     {
         var options = new ErrandOptions();
@@ -60,7 +61,6 @@ public static class ErrandExtensions
         services.AddSingleton(options);
         services.AddSingleton<ErrandRegistry>();
         foreach (var type in options.Types.Values) services.AddScoped(type.DeciderType);
-        services.ConfigureFisher(store => store.Projections.Snapshot<Errand>(SnapshotLifecycle.Inline));
         return services;
     }
 

@@ -50,10 +50,29 @@ with `PrivateAssets="all"`, so apps don't get a second copy from us.
 refuses to start in dynamic mode. Edge.Errands itself doesn't reference it, and we
 think that's right: dynamic or static is the app's choice.
 
+**What the docs say** ([migration](https://wolverinefx.io/guide/migration.html#runtime-code-generation-moved-to-the-wolverinefx-runtimecompilation-package-breaking),
+[codegen](https://wolverinefx.io/guide/codegen.html), read 2026-10-28).
+- Roslyn left core `WolverineFx` in 6.0, so static and Native AOT apps can ship without
+  it. The package auto-registers when referenced. Without it, dynamic or auto mode fails
+  at startup with the message our test projects hit.
+- Both pages put the requirement on *applications*. Nothing says a library should or
+  shouldn't reference it. We read that as "the host decides", but it's our reading.
+- `codegen write` writes into the *entry* project, which compiles the generated code.
+  For handlers in a class library, the codegen page says to use
+  `Discovery.IncludeAssembly` and leave `ApplicationAssembly` alone, which is what
+  `UseErrands()` does.
+- Since 6.30, a missing pre-built handler fails host start in static mode, rather than
+  losing messages.
+- `codegen write` needs `return await app.RunJasperFxCommands(args);` as the last line
+  of `Program.cs`. Our ReferenceApi ends with `app.Run()`, which is why
+  `dotnet run -- codegen preview` started the server instead of previewing the code.
+
 **What we'd like to know.**
-- Is that right: a library never references `WolverineFx.RuntimeCompilation`?
-- In static mode, does `codegen write` pre-generate handlers that came from a library
-  through `Discovery.IncludeAssembly` (our `UseErrands()`)? We haven't tried static mode.
+- Is "a library never references `WolverineFx.RuntimeCompilation`" right?
+- Neither page says whether `codegen write` pre-generates handlers from an assembly added
+  by `Discovery.IncludeAssembly`. We could find out ourselves: switch the ReferenceApi to
+  `RunJasperFxCommands`, run `codegen write`, start it in static mode, and see whether
+  the errand handlers load.
 - Our handlers ask for JasperFx's interfaces (`IDocumentSessionOperations`,
   `IDocumentReadOperations`, `IDocumentWriteOperations`) instead of a store's session.
   On Fisher, the generated code opens one outboxed session and casts it to each. Is that

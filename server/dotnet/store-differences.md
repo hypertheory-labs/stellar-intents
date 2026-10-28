@@ -5,7 +5,9 @@ sourcing API, but not always its behaviour. This is what we've run into while ma
 Edge.Errands depend on JasperFx.Events instead of Fisher. Each entry says which stores
 it was checked on. "Not checked" means we don't know, not that it's the same.
 
-Versions: Fisher 1.20.2, JasperFx.Events 2.87.1, WolverineFx 6.50.2.
+Versions: Fisher 1.20.2, Marten 9.50.2, JasperFx.Events 2.87.1, WolverineFx 6.50.2.
+The shared tests are `Edge.Errands.StoreTests`, run by `Edge.Errands.Fisher.Tests` and
+`Edge.Errands.Marten.Tests`.
 
 ## Behaviour
 
@@ -13,23 +15,34 @@ Versions: Fisher 1.20.2, JasperFx.Events 2.87.1, WolverineFx 6.50.2.
 guard a rule beats the version check, so a lost race becomes a crash instead of a
 `ConcurrencyException`. We let the version check hold the rule and retry
 `ConcurrencyException` (`Edge.Errands/Errand.cs`).
+Fisher: yes. Marten: not checked (the race test passes on both, but `Errand`'s `Apply`
+never throws, so it can't tell). Polecat: not checked.
+
+## Schema
+
+**With `AutoCreate.None`, Fisher's `ApplyAllDatabaseChangesOnStartup()` creates
+nothing,** not even the event tables. With `CreateOnly` or `CreateOrUpdate` it creates
+what's registered. An explicit `ApplyAllConfiguredChangesToDatabaseAsync()` does create
+it.
 Fisher: yes. Marten: not checked. Polecat: not checked.
 
-**With `AutoCreate.None`, `ApplyAllDatabaseChangesOnStartup()` creates nothing,** not
-even the event tables (only Wolverine's own tables appear). With `CreateOnly` or
-`CreateOrUpdate` it creates what's registered. With `None`, calling
-`ApplyAllConfiguredChangesToDatabaseAsync()` yourself does create it, which is what
-`Edge.Errands.Fisher.Tests` does.
-Fisher: yes. Marten: not checked. Polecat: not checked.
+**With `AutoCreate.None`, Wolverine's own tables follow Marten's setting and not
+Fisher's.** On Fisher, Wolverine creates its tables as it starts anyway. On Marten it
+doesn't, and startup fails on `wolverine_nodes`. Marten's explicit
+`Storage.ApplyAllConfiguredChangesToDatabaseAsync()` doesn't create them, and nor does
+Wolverine's `Storage.Admin.MigrateAsync()`, nor `AutoBuildMessageStorageOnStartup =
+CreateOrUpdate`. `AddResourceSetupOnStartup()` creates both the store's registered
+tables and Wolverine's, on both stores, which is what the shared tests use.
+Fisher: Wolverine creates its tables. Marten: it doesn't. Polecat: not checked.
 
 **Where the explicit schema apply lives.** Fisher: `IDocumentStore.ApplyAllConfiguredChangesToDatabaseAsync()`.
-Marten, as we remember its API: `store.Storage.ApplyAllConfiguredChangesToDatabaseAsync()`.
-Not run against Marten here.
+Marten: `IDocumentStore.Storage.ApplyAllConfiguredChangesToDatabaseAsync()`.
+Both: compiled and run. Polecat: not checked.
 
 **A projection's document needs no `Schema.For<T>()`.** `Projections.Snapshot<Errand>()`
-alone gets the errand its table from an explicit apply. A document written directly
-(`ErrandOffer`) does need registering.
-Fisher: yes. Marten: not checked. Polecat: not checked.
+alone gets the errand its table. A document written directly (`ErrandOffer`) does need
+registering; without it, every shared test fails on both stores.
+Fisher: yes. Marten: yes. Polecat: not checked.
 
 ## Packaging
 
@@ -41,16 +54,23 @@ Fisher reference stops running it, and nothing says so until startup throws
 directly now. JasperFx.Events' own build file says Marten bundles it too.
 Fisher: yes. Marten: by that comment, not checked. Polecat: not checked.
 
+**Each store's configuration is its own type.** `AddFisher` returns
+`FisherConfigurationExpression`, `AddMarten` returns
+`MartenServiceCollectionExtensions.MartenConfigurationExpression`, with no shared
+interface, so `IntegrateWithErrands()` is a package per store (as
+`IntegrateWithWolverine()` is).
+Fisher, Marten: yes. Polecat: not checked.
+
 ## The shared interfaces
 
 **No one interface has events, loading, and storing.** `IDocumentSessionOperations` has
 `Events` (`IEventStoreOperations`) and `SaveChangesAsync`. `LoadAsync` and `Query` are on
 `IDocumentReadOperations`, and `Store` is on `IDocumentWriteOperations`. A Wolverine handler
-can ask for several; it gets the same session as each, opened by Wolverine's outbox (seen
-in the generated code).
-Fisher: yes. Marten: not checked. Polecat: not checked.
+can ask for several; it gets the same session as each, opened by Wolverine's outbox.
+Fisher: yes (seen in the generated code). Marten: yes (by the shared tests: a decider's
+writes commit with the outcome; the generated code wasn't read). Polecat: not checked.
 
 **A read-only session can't `FetchLatest` through them.** A query session's `Events` is
 `IQueryEventStore`, which has no `FetchLatest`. Only the writing session's
 `IEventStoreOperations` does.
-Seen in JasperFx.Events itself, so likely all three.
+In JasperFx.Events itself, so all three.

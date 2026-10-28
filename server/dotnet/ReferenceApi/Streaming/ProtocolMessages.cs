@@ -34,6 +34,7 @@ public static class ProtocolEvents
     /// <param name="outcome">Final: an outcome never changes.</param>
     /// <param name="reason">Why it was declined. Shown to the user, so written for a person.</param>
     /// <param name="made">Accepted, and it made something with its own id: memory will contain it.</param>
+    /// <param name="offers">Declined, and what they can choose instead. Sent as an empty list when none.</param>
     public static ServerSentEvent IntentDecided(
         string patronId, Guid intentId, IntentOutcome outcome, string? reason = null, Guid? made = null,
         IReadOnlyList<OfferView>? offers = null) =>

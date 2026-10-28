@@ -41,6 +41,9 @@ in cold, so every word in its vocabulary must change code or catch a bug, or it 
 - **Fisher applies inline projections before it checks the stream version.** An `Apply`
   that throws to guard an invariant beats the version check and turns a lost race into a
   crash. Let the version check hold the rule; handlers retry `ConcurrencyException`.
+- Edge.Errands is moving from Fisher to JasperFx.Events' interfaces, toward Marten and
+  Polecat too. Log every store difference found along the way in
+  `server/dotnet/store-differences.md` (the JasperFx core team wants that list).
 
 ## Working here
 

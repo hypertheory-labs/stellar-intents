@@ -28,7 +28,7 @@ public sealed class ErrandSession(IDocumentSessionOperations session, IDocumentR
     /// <summary>Fetch, append, and start streams. Saved with the outcome.</summary>
     public IEventStoreOperations Events => session.Events;
 
-    public IQueryable<T> Query<T>() => documents.Query<T>();
+    public IQueryable<T> Query<T>() where T : notnull => documents.Query<T>();
 }
 
 /// <summary>The errand types this app runs.</summary>

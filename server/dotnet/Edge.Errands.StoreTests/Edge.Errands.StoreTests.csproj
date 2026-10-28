@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <!-- Tests every store's package runs: Edge.Errands.Fisher.Tests and Edge.Errands.Marten.Tests
+         each subclass these with their store. Not a test project itself. -->
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <Nullable>enable</Nullable>
+        <ImplicitUsings>enable</ImplicitUsings>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Shouldly" Version="4.3.0" />
+        <PackageReference Include="WolverineFx.RuntimeCompilation" Version="6.50.2" />
+        <PackageReference Include="xunit.v3.extensibility.core" Version="3.2.2" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\Edge.Errands\Edge.Errands.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <Using Include="Shouldly" />
+        <Using Include="Xunit" />
+    </ItemGroup>
+
+</Project>

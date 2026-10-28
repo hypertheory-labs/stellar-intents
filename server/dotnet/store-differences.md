@@ -7,7 +7,8 @@ it was checked on. "Not checked" means we don't know, not that it's the same.
 
 Versions: Fisher 1.20.2, Marten 9.50.2, JasperFx.Events 2.87.1, WolverineFx 6.50.2.
 The shared tests are `Edge.Errands.StoreTests`, run by `Edge.Errands.Fisher.Tests` and
-`Edge.Errands.Marten.Tests`.
+`Edge.Errands.Marten.Tests`. What we couldn't answer ourselves is in
+[`unsettled/critter-stack-questions.md`](../../unsettled/critter-stack-questions.md).
 
 ## Behaviour
 

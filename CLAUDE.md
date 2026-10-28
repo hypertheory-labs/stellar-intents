@@ -43,7 +43,9 @@ in cold, so every word in its vocabulary must change code or catch a bug, or it 
   crash. Let the version check hold the rule; handlers retry `ConcurrencyException`.
 - Edge.Errands is moving from Fisher to JasperFx.Events' interfaces, toward Marten and
   Polecat too. Log every store difference found along the way in
-  `server/dotnet/store-differences.md` (the JasperFx core team wants that list).
+  `server/dotnet/store-differences.md` (the JasperFx core team wants that list), and
+  every question we can't answer ourselves, with what we saw and did, in
+  `unsettled/critter-stack-questions.md`.
 
 ## Working here
 

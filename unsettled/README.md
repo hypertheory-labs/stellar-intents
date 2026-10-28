@@ -16,3 +16,4 @@ history keeps what's deleted.
 | [errands-library.md](errands-library.md)     | Library errands, the first of three sample domains: holds, swaps, notifications, inter-library loans.                     |
 | [errands-insurance.md](errands-insurance.md) | Insurance errands, the second sample domain: coverage with a "best we can do" offer, binding a quote, removing a vehicle. |
 | [errands-shop.md](errands-shop.md)           | Shop errands, the third sample domain: a grace window, errands addressed to an order, a broken promise as an apology.     |
+| [critter-stack-questions.md](critter-stack-questions.md)| For the Marten/Wolverine team: code generation in a library, AutoCreate, the shared interfaces.                           |

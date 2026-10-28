@@ -153,6 +153,22 @@ both stores.
 these projections and document types to whichever store this is"? With one, a library
 like this would need no per-store packages at all.
 
+### 8. Is `IDocumentCommitListener` meant to be registered on any store?
+
+**What we saw.** JasperFx.Events has `IDocumentCommitListener` and `IDocumentChangeSet`,
+which look like the store-neutral way to hear commits. But Fisher's and Marten's
+`StoreOptions.Listeners` take only their own `IDocumentSessionListener`. Fisher's extends
+`IDocumentCommitListener`; Marten's doesn't. Neither store's `IChangeSet` implements
+`IDocumentChangeSet`.
+
+**Why it matters to us.** Our invalidations (`ReferenceApi/Streaming/Invalidations.cs`)
+come from a commit listener: the app maps a document type to the reads it makes stale,
+once. Moving that into a library means an adapter per store, the same shape as
+`IntegrateWithErrands()`.
+
+**What we'd like to know.** Is there (or will there be) a store-neutral way to register
+an `IDocumentCommitListener`? Should Marten's listener extend it the way Fisher's does?
+
 ## Behaviour
 
 ### 7. Inline projections before the version check

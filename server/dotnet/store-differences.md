@@ -71,6 +71,13 @@ can ask for several; it gets the same session as each, opened by Wolverine's out
 Fisher: yes (seen in the generated code). Marten: yes (by the shared tests: a decider's
 writes commit with the outcome; the generated code wasn't read). Polecat: not checked.
 
+**A commit listener can't be registered store-neutrally.** Each store's
+`StoreOptions.Listeners` holds only its own `IDocumentSessionListener`. Fisher's extends
+JasperFx's `IDocumentCommitListener` (bridged explicitly); Marten's doesn't implement it.
+Neither store's `IChangeSet` implements JasperFx's `IDocumentChangeSet`. So a listener
+written against JasperFx's interface needs an adapter per store to be heard at all.
+Fisher, Marten: yes (by reflection; no listener run on Marten). Polecat: not checked.
+
 **A read-only session can't `FetchLatest` through them.** A query session's `Events` is
 `IQueryEventStore`, which has no `FetchLatest`. Only the writing session's
 `IEventStoreOperations` does.

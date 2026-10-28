@@ -1,4 +1,3 @@
-using Fisher;
 using JasperFx;
 using JasperFx.Events.Documents;
 using Wolverine;
@@ -97,9 +96,9 @@ public static class DecideErrandHandler
     // Declared here so the library doesn't depend on the app's error policies.
     public static void Configure(HandlerChain chain) => chain.OnException<ConcurrencyException>().RetryTimes(3);
 
-    // Fisher's session, for now, because it's what IDecide hands a decider.
     public static async Task<OutgoingMessages> Handle(
-        DecideErrand command, IDocumentSession session, ErrandRegistry registry, CancellationToken cancellation)
+        DecideErrand command, IDocumentSessionOperations session, IDocumentReadOperations documents,
+        IDocumentWriteOperations writes, ErrandRegistry registry, CancellationToken cancellation)
     {
         var messages = new OutgoingMessages();
         // WHY for writing: if a withdraw commits between this read and this save, the save
@@ -109,7 +108,7 @@ public static class DecideErrandHandler
         // Already ended: withdrawn first, or this is a redelivery.
         if (errand is null || !errand.Pending) return messages;
 
-        var decision = await registry.Decide(errand, session, cancellation);
+        var decision = await registry.Decide(errand, new ErrandSession(session, documents), cancellation);
         var now = DateTimeOffset.UtcNow;
         var (ended, happened) = decision switch
         {
@@ -133,7 +132,7 @@ public static class DecideErrandHandler
                 ? null
                 : new ErrandOffers(Guid.CreateVersion7(), registry.Offered(errand.Type, d.Offers));
             if (offers is not null)
-                session.Store(new ErrandOffer
+                writes.Store(new ErrandOffer
                 {
                     Id = offers.Id, From = errand.Id, Requester = errand.Requester, Choose = [.. offers.Choose],
                 });

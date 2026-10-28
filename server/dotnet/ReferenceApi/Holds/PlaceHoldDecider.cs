@@ -1,5 +1,4 @@
 using Edge.Errands;
-using Fisher;
 using JasperFx.Events.Documents;
 
 namespace ReferenceApi.Holds;
@@ -17,7 +16,7 @@ public class PlaceHoldDecider : IDecide<PlaceHold>
     /// <summary>The library's rule, deliberately simple: at most this many holds per patron.</summary>
     public const int HoldLimit = 3;
 
-    public async Task<Decision> Decide(PlaceHold ask, Errand errand, IDocumentSession session, CancellationToken cancellation)
+    public async Task<Decision> Decide(PlaceHold ask, Errand errand, ErrandSession session, CancellationToken cancellation)
     {
         var placed = await session.Query<Hold>()
             .Where(h => h.PatronId == errand.Requester && h.Status == HoldStatus.Placed)

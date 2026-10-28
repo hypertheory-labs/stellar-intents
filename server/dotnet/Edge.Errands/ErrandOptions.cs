@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using Fisher;
+using JasperFx.Events;
+using JasperFx.Events.Documents;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Edge.Errands;
@@ -13,7 +14,21 @@ public interface IDecide<in TAsk>
     /// Accept or decline. Make the change in <paramref name="session"/>: it's committed in
     /// the same transaction as the outcome, so the two can't disagree.
     /// </summary>
-    Task<Decision> Decide(TAsk ask, Errand errand, IDocumentSession session, CancellationToken cancellation);
+    Task<Decision> Decide(TAsk ask, Errand errand, ErrandSession session, CancellationToken cancellation);
+}
+
+/// <summary>The session a decision is made in, whichever store it is (Marten, Fisher, Polecat).</summary>
+/// <remarks>
+/// WHY a type of our own: JasperFx's interfaces split one session across several, and
+/// none has both events and queries. This gives a decider the parts deciders have needed,
+/// and no more: add one when a decider needs it.
+/// </remarks>
+public sealed class ErrandSession(IDocumentSessionOperations session, IDocumentReadOperations documents)
+{
+    /// <summary>Fetch, append, and start streams. Saved with the outcome.</summary>
+    public IEventStoreOperations Events => session.Events;
+
+    public IQueryable<T> Query<T>() => documents.Query<T>();
 }
 
 /// <summary>The errand types this app runs.</summary>
@@ -56,7 +71,7 @@ internal sealed record ErrandType(
     Type DeciderType,
     TimeSpan Window,
     IReadOnlySet<string> Offers,
-    Func<object, object, Errand, IDocumentSession, CancellationToken, Task<Decision>> Decide);
+    Func<object, object, Errand, ErrandSession, CancellationToken, Task<Decision>> Decide);
 
 /// <summary>Looks up registered errand types, and reads and writes their asks.</summary>
 public sealed class ErrandRegistry(ErrandOptions options, IServiceProvider services)
@@ -96,7 +111,7 @@ public sealed class ErrandRegistry(ErrandOptions options, IServiceProvider servi
         })];
     }
 
-    internal async Task<Decision> Decide(Errand errand, IDocumentSession session, CancellationToken cancellation)
+    internal async Task<Decision> Decide(Errand errand, ErrandSession session, CancellationToken cancellation)
     {
         var type = Get(errand.Type);
         var ask = JsonSerializer.Deserialize(errand.Ask, type.AskType, Json)!;

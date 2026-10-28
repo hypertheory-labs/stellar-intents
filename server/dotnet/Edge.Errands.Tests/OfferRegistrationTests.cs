@@ -1,5 +1,4 @@
 using Edge.Errands;
-using Fisher;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Edge.Errands.Tests;
@@ -13,7 +12,7 @@ public class OfferRegistrationTests
 
     private class Decides<T> : IDecide<T>
     {
-        public Task<Decision> Decide(T ask, Errand errand, IDocumentSession session, CancellationToken cancellation) =>
+        public Task<Decision> Decide(T ask, Errand errand, ErrandSession session, CancellationToken cancellation) =>
             Task.FromResult(Decision.Accept());
     }
 

@@ -1,5 +1,4 @@
 using Edge.Errands;
-using Fisher;
 using JasperFx.Events.Documents;
 
 namespace ReferenceApi.Holds;
@@ -16,7 +15,7 @@ public record SwapHold(Guid GiveUp, int TitleId, string BranchCode);
 /// </remarks>
 public class SwapHoldDecider : IDecide<SwapHold>
 {
-    public async Task<Decision> Decide(SwapHold ask, Errand errand, IDocumentSession session, CancellationToken cancellation)
+    public async Task<Decision> Decide(SwapHold ask, Errand errand, ErrandSession session, CancellationToken cancellation)
     {
         // WHY for writing: if the hold is cancelled between this read and the save, the save
         // fails on the hold's version, the handler retries, and the retry declines.

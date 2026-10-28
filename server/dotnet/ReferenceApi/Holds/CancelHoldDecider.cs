@@ -1,5 +1,4 @@
 using Edge.Errands;
-using Fisher;
 
 namespace ReferenceApi.Holds;
 
@@ -18,7 +17,7 @@ public record CancelHold(Guid HoldId);
 /// </remarks>
 public class CancelHoldDecider : IDecide<CancelHold>
 {
-    public async Task<Decision> Decide(CancelHold ask, Errand errand, IDocumentSession session, CancellationToken cancellation)
+    public async Task<Decision> Decide(CancelHold ask, Errand errand, ErrandSession session, CancellationToken cancellation)
     {
         var hold = await session.Events.FetchLatest<Hold>(ask.HoldId, cancellation);
         // One reason for both: whether someone else's hold exists is none of their business.

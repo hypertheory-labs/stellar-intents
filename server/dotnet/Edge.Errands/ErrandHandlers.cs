@@ -17,7 +17,38 @@ namespace Edge.Errands;
 /// </remarks>
 public record ErrandEnded(
     Guid ErrandId, string Type, string Requester, ErrandOutcome Outcome, string? Reason, Guid? Made = null,
-    ErrandOffers? Offers = null);
+    ErrandOffers? Offers = null)
+{
+    /// <summary>This ending as PROTOCOL §3's "intent-decided": the app only says who to tell.</summary>
+    public IntentDecided ToIntentDecided() => new(ErrandId,
+        Outcome switch
+        {
+            ErrandOutcome.Accepted => "accepted",
+            ErrandOutcome.Declined => "declined",
+            _ => "withdrawn",
+        },
+        Reason, Made, OfferView.ListOf(Offers));
+}
+
+/// <summary>PROTOCOL §3's "intent-decided" body: how an errand ended, for the person who asked.</summary>
+/// <remarks>
+/// WHY here, and not in each app: its fields are an errand's, and an app copying them gets
+/// them wrong quietly (the empty list of offers, the outcome's spelling).
+/// </remarks>
+/// <param name="IntentId">The errand's id, which is also its Idempotency-Key.</param>
+/// <param name="Outcome">
+/// "accepted", "declined", or "withdrawn". Final: an outcome never changes. Withdrawn means
+/// the person took it back before the decision: not a decision against them, so the client
+/// owes no apology.
+/// </param>
+/// <param name="Reason">Why it was declined. Shown to the person, so written for one.</param>
+/// <param name="Made">Accepted, and it made something with its own id: memory will contain it.</param>
+/// <param name="Offers">Declined, and what they can choose instead. Empty when none.</param>
+public record IntentDecided(Guid IntentId, string Outcome, string? Reason, Guid? Made, IReadOnlyList<OfferView> Offers)
+{
+    /// <summary>The event's name on the stream.</summary>
+    public const string EventType = "intent-decided";
+}
 
 // Public only so Wolverine finds the handlers; the endpoints are the way in.
 public record RequestErrand(Guid Id, string Type, string Requester, string Ask);

@@ -16,8 +16,8 @@
              a store package it has to be referenced directly, or startup fails. Private: an
              app's own aggregates get it from their store package.
              UPGRADING: keep this version equal to the JasperFx.Events that Wolverine and the
-             stores use (2.87.1 now). Whether it must match is an open question
-             (unsettled/critter-stack-questions.md, #1); a mismatch may only show at startup. -->
+             stores use (2.87.1 now). Matching, and private, is "always safest" (Jeremy;
+             unsettled/critter-stack-questions.md, #1). A mismatch may only show at startup. -->
         <PackageReference Include="JasperFx.Events.SourceGenerator" Version="2.87.1" PrivateAssets="all" />
         <PackageReference Include="WolverineFx" Version="6.50.2" />
     </ItemGroup>

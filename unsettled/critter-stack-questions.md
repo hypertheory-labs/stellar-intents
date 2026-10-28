@@ -37,11 +37,11 @@ with `PrivateAssets="all"`, so apps don't get a second copy from us.
 **Answered.** A direct reference is the way. Jeremy (via Jeff, 2026-10-28): "Yeah,
 think you'll just have to add the source generator for projection support."
 
-**Still open.**
-- Is `PrivateAssets="all"` right? The exception's own text warns that it hides the
-  analyzer from downstream projects. We think that's fine (an app's aggregates get it
-  from their store package), but we're guessing.
-- Must the generator's version track JasperFx.Events exactly? We matched them by hand.
+Asked next whether `PrivateAssets="all"` is right and whether the generator's version
+must match JasperFx.Events: "Always safest, yes." So we keep both: private, and the same
+version as JasperFx.Events.
+
+**Still open** (no answer yet, and not pressing).
 - A silent build and a startup failure is the worst moment to find out. Could the build
   warn when an assembly has aggregate-shaped types and no generator?
 

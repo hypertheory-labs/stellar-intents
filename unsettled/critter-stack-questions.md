@@ -153,7 +153,7 @@ both stores.
 these projections and document types to whichever store this is"? With one, a library
 like this would need no per-store packages at all.
 
-### 8. Is `IDocumentCommitListener` meant to be registered on any store?
+### 7. Is `IDocumentCommitListener` meant to be registered on any store?
 
 **What we saw.** JasperFx.Events has `IDocumentCommitListener` and `IDocumentChangeSet`,
 which look like the store-neutral way to hear commits. But Fisher's and Marten's
@@ -171,7 +171,7 @@ an `IDocumentCommitListener`? Should Marten's listener extend it the way Fisher'
 
 ## Behaviour
 
-### 7. Inline projections before the version check
+### 8. Inline projections before the version check
 
 **What we saw.** On Fisher, inline projections run before the stream version check, so
 an `Apply` that throws to guard a rule turns a lost race into a crash instead of a
